@@ -1,2 +1,0 @@
-##Gardenerd Development Guide
-
