@@ -3,5 +3,8 @@ temp
 .DS_Store
 .DS_Store.swp
 
-backend/.env
+__pycache__/
+*.py[cod]
+*$py.class
 
+backend/.env
