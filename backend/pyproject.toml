@@ -16,3 +16,8 @@ dev = [
     "pytest-django>=4.12.0",
     "ruff>=0.15.21",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "gardenerd.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["tests"]
