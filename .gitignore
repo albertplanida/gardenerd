@@ -28,6 +28,7 @@ frontend/.yarn/*
 
 # Frontend env/secrets
 frontend/.env*
+!frontend/.env.local.example
 frontend/*.pem
 
 # Frontend logs
