@@ -1,10 +1,43 @@
 temp
-*/db.sqlite3
+
+# OS/editor
 .DS_Store
 .DS_Store.swp
 
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*/db.sqlite3
 
 backend/.env
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+
+# Frontend env/secrets
+frontend/.env*
+!frontend/.env.local.example
+frontend/*.pem
+
+# Frontend logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# Frontend tooling
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
