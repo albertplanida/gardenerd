@@ -1,5 +1,12 @@
 temp
 
+# Runtime env/data
+.env
+data/postgres/*
+!data/postgres/.gitkeep
+data/media/*
+!data/media/.gitkeep
+
 # OS/editor
 .DS_Store
 .DS_Store.swp
@@ -9,6 +16,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 */db.sqlite3
+backend/staticfiles/*
+!backend/staticfiles/.gitkeep
 
 backend/.env
 

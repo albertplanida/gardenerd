@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gardenerd}
+      POSTGRES_USER: ${POSTGRES_USER:-gardenerd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000}
+      POSTGRES_DB: ${POSTGRES_DB:-gardenerd}
+      POSTGRES_USER: ${POSTGRES_USER:-gardenerd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DJANGO_MEDIA_ROOT: /app/media
+      DJANGO_MEDIA_URL: /media/
+    volumes:
+      - ./data/media:/app/media
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_ENDPOINT: http://backend:8000
+        GRAPHQL_ENDPOINT: http://backend:8000/graphql/
+        NEXT_PUBLIC_GRAPHQL_ENDPOINT: /graphql
+    restart: unless-stopped
+    environment:
+      BACKEND_ENDPOINT: http://backend:8000
+      GRAPHQL_ENDPOINT: http://backend:8000/graphql/
+      NEXT_PUBLIC_GRAPHQL_ENDPOINT: /graphql
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
