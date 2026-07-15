@@ -11,6 +11,8 @@ describe("Home", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "Gardenerd" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Gardenerd" }),
+    ).toBeInTheDocument();
   });
 });
