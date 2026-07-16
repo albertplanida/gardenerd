@@ -91,7 +91,7 @@ jobs:
               --header 'Content-Type: application/json' \
               --data '{"query":"{ health }"}' \
               http://127.0.0.1:3000/graphql \
-              | grep --fixed-strings '"health":"ok"'; then
+              | grep --extended-regexp '"health"[[:space:]]*:[[:space:]]*"ok"'; then
               exit 0
             fi
             sleep 2
