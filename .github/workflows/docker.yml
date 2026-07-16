@@ -1,0 +1,97 @@
+name: Docker
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: false
+          tags: gardenerd-backend:ci
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: false
+          tags: gardenerd-frontend:ci
+
+  compose-smoke:
+    name: Compose Smoke Test
+    runs-on: ubuntu-latest
+
+    env:
+      POSTGRES_DB: gardenerd
+      POSTGRES_USER: gardenerd
+      POSTGRES_PASSWORD: ci-postgres-password
+      DJANGO_SECRET_KEY: ci-django-secret-key
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      CSRF_TRUSTED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      FRONTEND_PORT: "3000"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate compose config
+        run: docker compose config --quiet
+
+      - name: Start compose stack
+        run: docker compose up -d --build
+
+      - name: Wait for frontend
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose ps
+          exit 1
+
+      - name: Verify frontend smoke response
+        run: curl --fail --silent --show-error http://127.0.0.1:3000 | grep --fixed-strings "Gardenerd"
+
+      - name: Verify GraphQL health through frontend
+        run: |
+          curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' \
+            --data '{"query":"{ health }"}' \
+            http://127.0.0.1:3000/graphql \
+            | grep --fixed-strings '"health":"ok"'
+
+      - name: Dump compose logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop compose stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
