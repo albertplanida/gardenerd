@@ -86,11 +86,19 @@ jobs:
 
       - name: Verify GraphQL health through frontend
         run: |
-          curl --fail --silent --show-error \
-            --header 'Content-Type: application/json' \
-            --data '{"query":"{ health }"}' \
-            http://127.0.0.1:3000/graphql \
-            | grep --fixed-strings '"health":"ok"'
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error \
+              --header 'Content-Type: application/json' \
+              --data '{"query":"{ health }"}' \
+              http://127.0.0.1:3000/graphql \
+              | grep --fixed-strings '"health":"ok"'; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose ps
+          exit 1
 
       - name: Dump compose logs
         if: failure()
