@@ -20,7 +20,7 @@ The goal is to establish the correct worktree and create temporary ticket-specif
 7. Pull related Jira context, including parent story, subtasks, and linked issues when relevant.
 8. Read the project's main `PRD.md` in the ticket worktree.
 9. Inspect the codebase for files, tests, and conventions relevant to the Jira ticket.
-10. Create temporary ticket-specific PRD summary files in the ticket worktree.
+10. Create temporary ticket-specific PRD summary files in the ticket worktree only; do not write PRD summaries back to Jira.
 11. Use those temporary PRD files as the source of truth while coding.
 
 ## Worktree Rules
@@ -44,6 +44,14 @@ Before writing implementation code, gather enough Jira context to understand the
 - Comments when they contain requirements or clarifications.
 
 Use Jira as the source for ticket-specific scope, but cross-check product behavior against the repository's `PRD.md`.
+
+## Jira Write Rules
+
+- Do not create, overwrite, or update Jira ticket descriptions.
+- Do not add PRD content to Jira descriptions or comments unless the user explicitly asks for that Jira write.
+- Treat Jira ticket descriptions, comments, parent issues, subtasks, and links as read-only planning context by default.
+- Setting the active ticket to `In Progress` is allowed when starting work.
+- Temporary PRD summaries are local working files only and must not be written back to Jira.
 
 ## Codebase Review Requirements
 
@@ -72,7 +80,7 @@ Capture:
 
 ## Temporary Summary PRD Files
 
-Create temporary summary PRD files in the ticket worktree before coding.
+Create temporary summary PRD files in the ticket worktree before coding. These PRD summaries are created locally, not written back to Jira.
 
 For a story with subtasks:
 
