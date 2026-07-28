@@ -1,5 +1,8 @@
 temp
 
+# Local planning files
+*.prd.md
+
 # Runtime env/data
 .env
 data/postgres/*
