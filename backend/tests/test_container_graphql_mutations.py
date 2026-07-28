@@ -8,7 +8,7 @@ def test_create_container_mutation_creates_and_returns_container(client):
     response = client.post(
         '/graphql/',
         data={
-            'query': '''
+            'query': """
                 mutation CreateContainer($name: String!) {
                     createContainer(name: $name) {
                         id
@@ -17,7 +17,7 @@ def test_create_container_mutation_creates_and_returns_container(client):
                         updatedAt
                     }
                 }
-            ''',
+            """,
             'variables': {'name': 'Pot 1'},
         },
         content_type='application/json',
@@ -41,7 +41,7 @@ def test_edit_container_mutation_updates_and_returns_container(client):
     response = client.post(
         '/graphql/',
         data={
-            'query': '''
+            'query': """
                 mutation EditContainer($id: ID!, $name: String!) {
                     editContainer(id: $id, name: $name) {
                         id
@@ -50,7 +50,7 @@ def test_edit_container_mutation_updates_and_returns_container(client):
                         updatedAt
                     }
                 }
-            ''',
+            """,
             'variables': {'id': str(container.id), 'name': 'Updated Pot'},
         },
         content_type='application/json',
@@ -73,14 +73,14 @@ def test_edit_container_mutation_returns_clean_error_for_missing_container(clien
     response = client.post(
         '/graphql/',
         data={
-            'query': '''
+            'query': """
                 mutation EditContainer($id: ID!, $name: String!) {
                     editContainer(id: $id, name: $name) {
                         id
                         name
                     }
                 }
-            ''',
+            """,
             'variables': {'id': '999', 'name': 'Updated Pot'},
         },
         content_type='application/json',

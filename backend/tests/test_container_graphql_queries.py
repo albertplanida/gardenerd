@@ -8,7 +8,7 @@ def test_containers_query_returns_empty_list(client):
     response = client.post(
         '/graphql/',
         data={
-            'query': '''
+            'query': """
                 query Containers {
                     containers {
                         id
@@ -17,7 +17,7 @@ def test_containers_query_returns_empty_list(client):
                         updatedAt
                     }
                 }
-            '''
+            """
         },
         content_type='application/json',
     )
@@ -34,7 +34,7 @@ def test_containers_query_returns_existing_containers_in_id_order(client):
     response = client.post(
         '/graphql/',
         data={
-            'query': '''
+            'query': """
                 query Containers {
                     containers {
                         id
@@ -43,7 +43,7 @@ def test_containers_query_returns_existing_containers_in_id_order(client):
                         updatedAt
                     }
                 }
-            '''
+            """
         },
         content_type='application/json',
     )
