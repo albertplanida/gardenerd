@@ -26,7 +26,7 @@ This ignores files like:
 
 - `GARD-3.prd.md`
 - `GARD-24.prd.md`
-- `OPS-123.prd.md`
+- `GARD-123.prd.md`
 
 It does not ignore a top-level product document named `PRD.md`.
 

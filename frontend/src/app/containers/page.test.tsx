@@ -1,19 +1,19 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { createGraphqlClient } from "@/graphql/client";
 import {
-  CREATE_CONTAINER_MUTATION,
-  EDIT_CONTAINER_MUTATION,
-} from "@/graphql/queries";
+  createContainer,
+  editContainer,
+  listContainers,
+} from "@/graphql/containers";
 
 import ContainersPage from "./page";
 
-jest.mock("@/graphql/client", () => ({
-  createGraphqlClient: jest.fn(),
+jest.mock("@/graphql/containers", () => ({
+  createContainer: jest.fn(),
+  editContainer: jest.fn(),
+  listContainers: jest.fn(),
 }));
-
-const request = jest.fn();
 
 function renderContainersPage() {
   return render(
@@ -26,12 +26,10 @@ function renderContainersPage() {
 describe("ContainersPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    request.mockReset();
-    jest.mocked(createGraphqlClient).mockReturnValue({ request } as never);
   });
 
   it("renders the Containers page heading and add action", () => {
-    request.mockReturnValue(new Promise(() => undefined));
+    jest.mocked(listContainers).mockReturnValue(new Promise(() => undefined));
 
     renderContainersPage();
 
@@ -44,7 +42,7 @@ describe("ContainersPage", () => {
   });
 
   it("shows a loading state while Containers are requested", () => {
-    request.mockReturnValue(new Promise(() => undefined));
+    jest.mocked(listContainers).mockReturnValue(new Promise(() => undefined));
 
     renderContainersPage();
 
@@ -52,7 +50,7 @@ describe("ContainersPage", () => {
   });
 
   it("shows an empty state when there are no Containers", async () => {
-    request.mockResolvedValue({ containers: [] });
+    jest.mocked(listContainers).mockResolvedValue([]);
 
     renderContainersPage();
 
@@ -63,22 +61,20 @@ describe("ContainersPage", () => {
   });
 
   it("renders existing Container names", async () => {
-    request.mockResolvedValue({
-      containers: [
-        {
-          id: "1",
-          name: "Pot 1",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-        {
-          id: "2",
-          name: "Pot 2",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-      ],
-    });
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+      {
+        id: "2",
+        name: "Pot 2",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
 
     renderContainersPage();
 
@@ -87,7 +83,7 @@ describe("ContainersPage", () => {
   });
 
   it("shows an error state when Containers cannot be loaded", async () => {
-    request.mockRejectedValue(new Error("Network error"));
+    jest.mocked(listContainers).mockRejectedValue(new Error("Network error"));
 
     renderContainersPage();
 
@@ -97,7 +93,7 @@ describe("ContainersPage", () => {
   });
 
   it("opens the create modal from the Add Container action", async () => {
-    request.mockResolvedValue({ containers: [] });
+    jest.mocked(listContainers).mockResolvedValue([]);
 
     renderContainersPage();
     await screen.findByText("No Containers yet");
@@ -111,7 +107,7 @@ describe("ContainersPage", () => {
   });
 
   it("validates blank Container names when creating", async () => {
-    request.mockResolvedValue({ containers: [] });
+    jest.mocked(listContainers).mockResolvedValue([]);
 
     renderContainersPage();
     await screen.findByText("No Containers yet");
@@ -123,13 +119,12 @@ describe("ContainersPage", () => {
   });
 
   it("creates a Container and shows it in the list", async () => {
-    request.mockResolvedValueOnce({ containers: [] }).mockResolvedValueOnce({
-      createContainer: {
-        id: "1",
-        name: "Pot 1",
-        createdAt: "2026-08-01T12:00:00Z",
-        updatedAt: "2026-08-01T12:00:00Z",
-      },
+    jest.mocked(listContainers).mockResolvedValue([]);
+    jest.mocked(createContainer).mockResolvedValue({
+      id: "1",
+      name: "Pot 1",
+      createdAt: "2026-08-01T12:00:00Z",
+      updatedAt: "2026-08-01T12:00:00Z",
     });
 
     renderContainersPage();
@@ -142,9 +137,7 @@ describe("ContainersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Container" }));
 
     await waitFor(() => {
-      expect(request).toHaveBeenLastCalledWith(CREATE_CONTAINER_MUTATION, {
-        name: "Pot 1",
-      });
+      expect(createContainer).toHaveBeenLastCalledWith("Pot 1");
     });
     expect(await screen.findByText("Pot 1")).toBeInTheDocument();
     expect(
@@ -153,16 +146,14 @@ describe("ContainersPage", () => {
   });
 
   it("opens the edit modal with the selected Container name", async () => {
-    request.mockResolvedValue({
-      containers: [
-        {
-          id: "1",
-          name: "Pot 1",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-      ],
-    });
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
 
     renderContainersPage();
     await screen.findByText("Pot 1");
@@ -176,16 +167,14 @@ describe("ContainersPage", () => {
   });
 
   it("cancels editing without changing the visible Container name", async () => {
-    request.mockResolvedValue({
-      containers: [
-        {
-          id: "2",
-          name: "Pot 2",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-      ],
-    });
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "2",
+        name: "Pot 2",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
 
     renderContainersPage();
     await screen.findByText("Pot 2");
@@ -201,16 +190,14 @@ describe("ContainersPage", () => {
   });
 
   it("validates blank Container names when editing", async () => {
-    request.mockResolvedValue({
-      containers: [
-        {
-          id: "1",
-          name: "Pot 1",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-      ],
-    });
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
 
     renderContainersPage();
     await screen.findByText("Pot 1");
@@ -225,25 +212,20 @@ describe("ContainersPage", () => {
   });
 
   it("edits a Container and shows the updated name in the list", async () => {
-    request
-      .mockResolvedValueOnce({
-        containers: [
-          {
-            id: "1",
-            name: "Pot 1",
-            createdAt: "2026-08-01T12:00:00Z",
-            updatedAt: "2026-08-01T12:00:00Z",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        editContainer: {
-          id: "1",
-          name: "Front Porch Pot",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-02T12:00:00Z",
-        },
-      });
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
+    jest.mocked(editContainer).mockResolvedValue({
+      id: "1",
+      name: "Front Porch Pot",
+      createdAt: "2026-08-01T12:00:00Z",
+      updatedAt: "2026-08-02T12:00:00Z",
+    });
 
     renderContainersPage();
     await screen.findByText("Pot 1");
@@ -255,28 +237,22 @@ describe("ContainersPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save Container" }));
 
     await waitFor(() => {
-      expect(request).toHaveBeenLastCalledWith(EDIT_CONTAINER_MUTATION, {
-        id: "1",
-        name: "Front Porch Pot",
-      });
+      expect(editContainer).toHaveBeenLastCalledWith("1", "Front Porch Pot");
     });
     expect(await screen.findByText("Front Porch Pot")).toBeInTheDocument();
     expect(screen.queryByText("Pot 1")).not.toBeInTheDocument();
   });
 
   it("shows an error when editing fails", async () => {
-    request
-      .mockResolvedValueOnce({
-        containers: [
-          {
-            id: "1",
-            name: "Pot 1",
-            createdAt: "2026-08-01T12:00:00Z",
-            updatedAt: "2026-08-01T12:00:00Z",
-          },
-        ],
-      })
-      .mockRejectedValueOnce(new Error("Edit failed"));
+    jest.mocked(listContainers).mockResolvedValue([
+      {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    ]);
+    jest.mocked(editContainer).mockRejectedValue(new Error("Edit failed"));
 
     renderContainersPage();
     await screen.findByText("Pot 1");

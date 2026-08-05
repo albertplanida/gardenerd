@@ -8,6 +8,7 @@ type MockContainer = {
 };
 
 type GraphqlRequest = {
+  operationName?: string;
   query?: string;
   variables?: Record<string, string>;
 };
@@ -21,6 +22,14 @@ function makeContainer(id: string, name: string): MockContainer {
     createdAt: "2026-08-01T12:00:00Z",
     updatedAt: "2026-08-01T12:00:00Z",
   };
+}
+
+function getOperationName(body: GraphqlRequest) {
+  if (body.operationName) {
+    return body.operationName;
+  }
+
+  return body.query?.match(/\b(?:query|mutation)\s+(\w+)/)?.[1] ?? null;
 }
 
 async function mockContainerGraphql(
@@ -41,13 +50,10 @@ async function mockContainerGraphql(
 
     const body =
       typeof parsedBody === "string" ? { query: parsedBody } : parsedBody;
-    const query = body.query ?? "";
     const variables = body.variables ?? {};
+    const operationName = getOperationName(body);
 
-    if (
-      query.includes("createContainer") ||
-      (variables.name && !variables.id)
-    ) {
+    if (operationName === "CreateContainer") {
       const container = makeContainer(
         String(containers.length + 1),
         variables.name ?? "",
@@ -61,7 +67,7 @@ async function mockContainerGraphql(
       return;
     }
 
-    if (query.includes("editContainer") || variables.id) {
+    if (operationName === "EditContainer") {
       const id = variables.id ?? "";
       const name = variables.name ?? "";
       const index = containers.findIndex((container) => container.id === id);
@@ -87,9 +93,23 @@ async function mockContainerGraphql(
       return;
     }
 
+    if (operationName === "Containers") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { containers } },
+      });
+      return;
+    }
+
     await route.fulfill({
       contentType: "application/json",
-      json: { data: { containers } },
+      json: {
+        errors: [
+          {
+            message: `Unexpected GraphQL operation: ${operationName ?? "unknown"}`,
+          },
+        ],
+      },
     });
   });
 }
