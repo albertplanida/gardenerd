@@ -1,7 +1,7 @@
 temp
 
-# Local planning files
-*.prd.md
+# Jira issue PRD files
+*-[0-9]*.prd.md
 
 # Runtime env/data
 .env
