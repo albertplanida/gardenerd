@@ -8,13 +8,19 @@ import {
   Container,
   Group,
   Loader,
+  Modal,
   Stack,
   Text,
+  TextInput,
   Title,
 } from "@mantine/core";
 
 import { createGraphqlClient } from "@/graphql/client";
-import { CONTAINERS_QUERY } from "@/graphql/queries";
+import {
+  CONTAINERS_QUERY,
+  CREATE_CONTAINER_MUTATION,
+  EDIT_CONTAINER_MUTATION,
+} from "@/graphql/queries";
 
 type GardenContainer = {
   id: string;
@@ -27,10 +33,27 @@ type ContainersResponse = {
   containers: GardenContainer[];
 };
 
+type CreateContainerResponse = {
+  createContainer: GardenContainer;
+};
+
+type EditContainerResponse = {
+  editContainer: GardenContainer;
+};
+
+const requiredMessage = "Container name is required.";
+
 export default function ContainersPage() {
   const [containers, setContainers] = useState<GardenContainer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingContainer, setEditingContainer] =
+    useState<GardenContainer | null>(null);
+  const [containerName, setContainerName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,6 +85,107 @@ export default function ContainersPage() {
     };
   }, []);
 
+  function openCreateModal() {
+    setContainerName("");
+    setNameError(null);
+    setSaveError(false);
+    setIsCreateOpen(true);
+  }
+
+  function closeCreateModal() {
+    if (!isSaving) {
+      setIsCreateOpen(false);
+      setContainerName("");
+      setNameError(null);
+      setSaveError(false);
+    }
+  }
+
+  function openEditModal(container: GardenContainer) {
+    setEditingContainer(container);
+    setContainerName(container.name);
+    setNameError(null);
+    setSaveError(false);
+  }
+
+  function closeEditModal() {
+    if (!isSaving) {
+      setEditingContainer(null);
+      setContainerName("");
+      setNameError(null);
+      setSaveError(false);
+    }
+  }
+
+  async function handleCreate() {
+    const trimmedName = containerName.trim();
+
+    if (!trimmedName) {
+      setNameError(requiredMessage);
+      return;
+    }
+
+    setIsSaving(true);
+    setNameError(null);
+    setSaveError(false);
+
+    try {
+      const client = createGraphqlClient();
+      const data = await client.request<CreateContainerResponse>(
+        CREATE_CONTAINER_MUTATION,
+        { name: trimmedName },
+      );
+
+      setContainers((currentContainers) => [
+        ...currentContainers,
+        data.createContainer,
+      ]);
+      setIsCreateOpen(false);
+      setContainerName("");
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleEdit() {
+    const trimmedName = containerName.trim();
+
+    if (!trimmedName) {
+      setNameError(requiredMessage);
+      return;
+    }
+
+    if (!editingContainer) {
+      return;
+    }
+
+    setIsSaving(true);
+    setNameError(null);
+    setSaveError(false);
+
+    try {
+      const client = createGraphqlClient();
+      const data = await client.request<EditContainerResponse>(
+        EDIT_CONTAINER_MUTATION,
+        { id: editingContainer.id, name: trimmedName },
+      );
+
+      setContainers((currentContainers) =>
+        currentContainers.map((container) =>
+          container.id === data.editContainer.id ? data.editContainer : container,
+        ),
+      );
+      setEditingContainer(null);
+      setContainerName("");
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Container py="xl">
       <Stack gap="lg">
@@ -73,7 +197,7 @@ export default function ContainersPage() {
             </Text>
           </div>
 
-          <Button>Add Container</Button>
+          <Button onClick={openCreateModal}>Add Container</Button>
         </Group>
 
         {isLoading ? (
@@ -106,13 +230,75 @@ export default function ContainersPage() {
               <Card key={container.id} withBorder radius="md">
                 <Group justify="space-between">
                   <Title order={3}>{container.name}</Title>
-                  <Button variant="subtle">Edit</Button>
+                  <Button
+                    aria-label={`Edit ${container.name}`}
+                    onClick={() => openEditModal(container)}
+                    variant="subtle"
+                  >
+                    Edit
+                  </Button>
                 </Group>
               </Card>
             ))}
           </Stack>
         ) : null}
       </Stack>
+
+      <Modal
+        opened={isCreateOpen}
+        onClose={closeCreateModal}
+        title="Add Container"
+        transitionProps={{ duration: 0 }}
+        withinPortal={false}
+      >
+        <Stack gap="md">
+          {saveError ? (
+            <Alert color="red">Container could not be saved.</Alert>
+          ) : null}
+          <TextInput
+            error={nameError}
+            label="Container name"
+            onChange={(event) => setContainerName(event.currentTarget.value)}
+            value={containerName}
+          />
+          <Group justify="flex-end">
+            <Button disabled={isSaving} onClick={closeCreateModal} variant="default">
+              Cancel
+            </Button>
+            <Button loading={isSaving} onClick={handleCreate}>
+              Create Container
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={editingContainer !== null}
+        onClose={closeEditModal}
+        title="Edit Container"
+        transitionProps={{ duration: 0 }}
+        withinPortal={false}
+      >
+        <Stack gap="md">
+          {saveError ? (
+            <Alert color="red">Container could not be saved.</Alert>
+          ) : null}
+          <TextInput
+            error={nameError}
+            label="Container name"
+            onChange={(event) => setContainerName(event.currentTarget.value)}
+            value={containerName}
+          />
+          <Group justify="flex-end">
+            <Button disabled={isSaving} onClick={closeEditModal} variant="default">
+              Cancel
+            </Button>
+            <Button loading={isSaving} onClick={handleEdit}>
+              Save Container
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }

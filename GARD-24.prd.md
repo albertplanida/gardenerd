@@ -334,6 +334,8 @@ Then implement the initial `/containers` page data loading and list states.
 
 ### 4. Create Flow Tests
 
+Status: Completed.
+
 Write failing Jest tests for:
 
 - Clicking `Add Container` opens the create modal.
@@ -345,6 +347,8 @@ Write failing Jest tests for:
 Then implement the create modal and mutation behavior.
 
 ### 5. Edit Flow Tests
+
+Status: Completed.
 
 Write failing Jest tests for:
 
