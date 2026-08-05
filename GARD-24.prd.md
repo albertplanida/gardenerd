@@ -319,6 +319,8 @@ Then implement the smallest home page update needed to pass.
 
 ### 3. Initial Container List UI Tests
 
+Status: Completed.
+
 Write failing Jest tests for:
 
 - The `/containers` page renders a `Containers` heading.
