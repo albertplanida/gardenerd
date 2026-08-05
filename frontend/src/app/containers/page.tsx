@@ -8,50 +8,29 @@ import {
   Container,
   Group,
   Loader,
-  Modal,
   Stack,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
 
-import { createGraphqlClient } from "@/graphql/client";
 import {
-  CONTAINERS_QUERY,
-  CREATE_CONTAINER_MUTATION,
-  EDIT_CONTAINER_MUTATION,
-} from "@/graphql/queries";
+  createContainer,
+  editContainer,
+  type GardenContainer,
+  listContainers,
+} from "@/graphql/containers";
 
-type GardenContainer = {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-};
+import { ContainerFormModal } from "./ContainerFormModal";
 
-type ContainersResponse = {
-  containers: GardenContainer[];
-};
+type ModalState =
+  { mode: "create" } | { mode: "edit"; container: GardenContainer } | null;
 
-type CreateContainerResponse = {
-  createContainer: GardenContainer;
-};
-
-type EditContainerResponse = {
-  editContainer: GardenContainer;
-};
-
-const requiredMessage = "Container name is required.";
+type Status = "loading" | "ready" | "error";
 
 export default function ContainersPage() {
   const [containers, setContainers] = useState<GardenContainer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingContainer, setEditingContainer] =
-    useState<GardenContainer | null>(null);
-  const [containerName, setContainerName] = useState("");
-  const [nameError, setNameError] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  const [modalState, setModalState] = useState<ModalState>(null);
   const [saveError, setSaveError] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -60,20 +39,15 @@ export default function ContainersPage() {
 
     async function loadContainers() {
       try {
-        const client = createGraphqlClient();
-        const data = await client.request<ContainersResponse>(CONTAINERS_QUERY);
+        const data = await listContainers();
 
         if (isMounted) {
-          setContainers(data.containers);
-          setLoadError(false);
+          setContainers(data);
+          setStatus("ready");
         }
       } catch {
         if (isMounted) {
-          setLoadError(true);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
+          setStatus("error");
         }
       }
     }
@@ -86,101 +60,46 @@ export default function ContainersPage() {
   }, []);
 
   function openCreateModal() {
-    setContainerName("");
-    setNameError(null);
     setSaveError(false);
-    setIsCreateOpen(true);
+    setModalState({ mode: "create" });
   }
 
-  function closeCreateModal() {
+  function closeModal() {
     if (!isSaving) {
-      setIsCreateOpen(false);
-      setContainerName("");
-      setNameError(null);
+      setModalState(null);
       setSaveError(false);
     }
   }
 
   function openEditModal(container: GardenContainer) {
-    setEditingContainer(container);
-    setContainerName(container.name);
-    setNameError(null);
     setSaveError(false);
+    setModalState({ mode: "edit", container });
   }
 
-  function closeEditModal() {
-    if (!isSaving) {
-      setEditingContainer(null);
-      setContainerName("");
-      setNameError(null);
-      setSaveError(false);
-    }
-  }
-
-  async function handleCreate() {
-    const trimmedName = containerName.trim();
-
-    if (!trimmedName) {
-      setNameError(requiredMessage);
+  async function handleSave(name: string) {
+    if (!modalState) {
       return;
     }
 
     setIsSaving(true);
-    setNameError(null);
     setSaveError(false);
 
     try {
-      const client = createGraphqlClient();
-      const data = await client.request<CreateContainerResponse>(
-        CREATE_CONTAINER_MUTATION,
-        { name: trimmedName },
-      );
+      if (modalState.mode === "edit") {
+        const updated = await editContainer(modalState.container.id, name);
 
-      setContainers((currentContainers) => [
-        ...currentContainers,
-        data.createContainer,
-      ]);
-      setIsCreateOpen(false);
-      setContainerName("");
-    } catch {
-      setSaveError(true);
-    } finally {
-      setIsSaving(false);
-    }
-  }
+        setContainers((currentContainers) =>
+          currentContainers.map((container) =>
+            container.id === updated.id ? updated : container,
+          ),
+        );
+      } else {
+        const created = await createContainer(name);
 
-  async function handleEdit() {
-    const trimmedName = containerName.trim();
+        setContainers((currentContainers) => [...currentContainers, created]);
+      }
 
-    if (!trimmedName) {
-      setNameError(requiredMessage);
-      return;
-    }
-
-    if (!editingContainer) {
-      return;
-    }
-
-    setIsSaving(true);
-    setNameError(null);
-    setSaveError(false);
-
-    try {
-      const client = createGraphqlClient();
-      const data = await client.request<EditContainerResponse>(
-        EDIT_CONTAINER_MUTATION,
-        { id: editingContainer.id, name: trimmedName },
-      );
-
-      setContainers((currentContainers) =>
-        currentContainers.map((container) =>
-          container.id === data.editContainer.id
-            ? data.editContainer
-            : container,
-        ),
-      );
-      setEditingContainer(null);
-      setContainerName("");
+      setModalState(null);
     } catch {
       setSaveError(true);
     } finally {
@@ -202,20 +121,20 @@ export default function ContainersPage() {
           <Button onClick={openCreateModal}>Add Container</Button>
         </Group>
 
-        {isLoading ? (
+        {status === "loading" ? (
           <Group gap="sm">
             <Loader size="sm" />
             <Text>Loading Containers...</Text>
           </Group>
         ) : null}
 
-        {loadError ? (
+        {status === "error" ? (
           <Alert color="red" title="Containers could not be loaded.">
             Check that the local Gardenerd API is running, then try again.
           </Alert>
         ) : null}
 
-        {!isLoading && !loadError && containers.length === 0 ? (
+        {status === "ready" && containers.length === 0 ? (
           <Card withBorder radius="md">
             <Stack gap="xs">
               <Title order={2}>No Containers yet</Title>
@@ -226,7 +145,7 @@ export default function ContainersPage() {
           </Card>
         ) : null}
 
-        {!isLoading && !loadError && containers.length > 0 ? (
+        {status === "ready" && containers.length > 0 ? (
           <Stack gap="sm">
             {containers.map((container) => (
               <Card key={container.id} withBorder radius="md">
@@ -246,69 +165,19 @@ export default function ContainersPage() {
         ) : null}
       </Stack>
 
-      <Modal
-        opened={isCreateOpen}
-        onClose={closeCreateModal}
-        title="Add Container"
-        transitionProps={{ duration: 0 }}
-        withinPortal={false}
-      >
-        <Stack gap="md">
-          {saveError ? (
-            <Alert color="red">Container could not be saved.</Alert>
-          ) : null}
-          <TextInput
-            error={nameError}
-            label="Container name"
-            onChange={(event) => setContainerName(event.currentTarget.value)}
-            value={containerName}
-          />
-          <Group justify="flex-end">
-            <Button
-              disabled={isSaving}
-              onClick={closeCreateModal}
-              variant="default"
-            >
-              Cancel
-            </Button>
-            <Button loading={isSaving} onClick={handleCreate}>
-              Create Container
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={editingContainer !== null}
-        onClose={closeEditModal}
-        title="Edit Container"
-        transitionProps={{ duration: 0 }}
-        withinPortal={false}
-      >
-        <Stack gap="md">
-          {saveError ? (
-            <Alert color="red">Container could not be saved.</Alert>
-          ) : null}
-          <TextInput
-            error={nameError}
-            label="Container name"
-            onChange={(event) => setContainerName(event.currentTarget.value)}
-            value={containerName}
-          />
-          <Group justify="flex-end">
-            <Button
-              disabled={isSaving}
-              onClick={closeEditModal}
-              variant="default"
-            >
-              Cancel
-            </Button>
-            <Button loading={isSaving} onClick={handleEdit}>
-              Save Container
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+      {modalState ? (
+        <ContainerFormModal
+          error={saveError}
+          initialName={
+            modalState.mode === "edit" ? modalState.container.name : undefined
+          }
+          isSaving={isSaving}
+          mode={modalState.mode}
+          onClose={closeModal}
+          onSubmit={handleSave}
+          opened
+        />
+      ) : null}
     </Container>
   );
 }
