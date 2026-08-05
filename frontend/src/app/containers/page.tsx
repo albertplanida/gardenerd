@@ -38,6 +38,8 @@ export default function ContainersPage() {
     let isMounted = true;
 
     async function loadContainers() {
+      setStatus("loading");
+
       try {
         const data = await listContainers();
 
@@ -58,6 +60,19 @@ export default function ContainersPage() {
       isMounted = false;
     };
   }, []);
+
+  async function retryLoadContainers() {
+    setStatus("loading");
+
+    try {
+      const data = await listContainers();
+
+      setContainers(data);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }
 
   function openCreateModal() {
     setSaveError(false);
@@ -130,7 +145,12 @@ export default function ContainersPage() {
 
         {status === "error" ? (
           <Alert color="red" title="Containers could not be loaded.">
-            Check that the local Gardenerd API is running, then try again.
+            <Stack align="flex-start" gap="sm">
+              <Text>Check that the local Gardenerd API is running.</Text>
+              <Button onClick={retryLoadContainers} size="xs" variant="light">
+                Try again
+              </Button>
+            </Stack>
           </Alert>
         ) : null}
 

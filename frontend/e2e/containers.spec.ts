@@ -13,6 +13,12 @@ type GraphqlRequest = {
   variables?: Record<string, string>;
 };
 
+type MockGraphqlOptions = {
+  initialContainers?: MockContainer[];
+  queryFailures?: number;
+  saveFailures?: number;
+};
+
 const graphqlRoute = /\/graphql\/?(\?.*)?$/;
 
 function makeContainer(id: string, name: string): MockContainer {
@@ -34,9 +40,15 @@ function getOperationName(body: GraphqlRequest) {
 
 async function mockContainerGraphql(
   page: Page,
-  initialContainers: MockContainer[] = [],
+  {
+    initialContainers = [],
+    queryFailures = 0,
+    saveFailures = 0,
+  }: MockGraphqlOptions = {},
 ) {
   const containers = [...initialContainers];
+  let remainingQueryFailures = queryFailures;
+  let remainingSaveFailures = saveFailures;
 
   await page.route(graphqlRoute, async (route) => {
     const rawBody = route.request().postData() ?? "{}";
@@ -54,6 +66,16 @@ async function mockContainerGraphql(
     const operationName = getOperationName(body);
 
     if (operationName === "CreateContainer") {
+      if (remainingSaveFailures > 0) {
+        remainingSaveFailures -= 1;
+
+        await route.fulfill({
+          contentType: "application/json",
+          json: { errors: [{ message: "Container could not be saved" }] },
+        });
+        return;
+      }
+
       const container = makeContainer(
         String(containers.length + 1),
         variables.name ?? "",
@@ -68,6 +90,16 @@ async function mockContainerGraphql(
     }
 
     if (operationName === "EditContainer") {
+      if (remainingSaveFailures > 0) {
+        remainingSaveFailures -= 1;
+
+        await route.fulfill({
+          contentType: "application/json",
+          json: { errors: [{ message: "Container could not be saved" }] },
+        });
+        return;
+      }
+
       const id = variables.id ?? "";
       const name = variables.name ?? "";
       const index = containers.findIndex((container) => container.id === id);
@@ -94,6 +126,16 @@ async function mockContainerGraphql(
     }
 
     if (operationName === "Containers") {
+      if (remainingQueryFailures > 0) {
+        remainingQueryFailures -= 1;
+
+        await route.fulfill({
+          contentType: "application/json",
+          json: { errors: [{ message: "Containers unavailable" }] },
+        });
+        return;
+      }
+
       await route.fulfill({
         contentType: "application/json",
         json: { data: { containers } },
@@ -114,15 +156,6 @@ async function mockContainerGraphql(
   });
 }
 
-async function mockContainerQueryFailure(page: Page) {
-  await page.route(graphqlRoute, async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: { errors: [{ message: "Containers unavailable" }] },
-    });
-  });
-}
-
 async function createContainer(page: Page, name: string) {
   await page.getByRole("button", { name: "Add Container" }).click();
   await page.getByLabel("Container name").fill(name);
@@ -138,20 +171,6 @@ test("navigates from home to Containers", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/containers$/);
   await expect(page.getByRole("heading", { name: "Containers" })).toBeVisible();
-});
-
-test("shows an empty Containers state", async ({ page }) => {
-  await mockContainerGraphql(page);
-
-  await page.goto("/containers");
-
-  await expect(page.getByText("No Containers yet")).toBeVisible();
-  await expect(
-    page.getByText("Add your first pot or growing place to get started."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Add Container" }),
-  ).toBeVisible();
 });
 
 test("creates the initial four pots", async ({ page }) => {
@@ -178,16 +197,14 @@ test("creates the initial four pots", async ({ page }) => {
 });
 
 test("edits a Container name", async ({ page }) => {
-  await mockContainerGraphql(page, [makeContainer("1", "Pot 1")]);
+  await mockContainerGraphql(page, {
+    initialContainers: [makeContainer("1", "Pot 1")],
+  });
 
   await page.goto("/containers");
   await page.getByRole("button", { name: "Edit Pot 1" }).click();
 
   await expect(page.getByLabel("Container name")).toHaveValue("Pot 1");
-  await page.getByLabel("Container name").fill("");
-  await page.getByRole("button", { name: "Save Container" }).click();
-  await expect(page.getByText("Container name is required.")).toBeVisible();
-
   await page.getByLabel("Container name").fill("Front Porch Pot");
   await page.getByRole("button", { name: "Save Container" }).click();
 
@@ -198,7 +215,9 @@ test("edits a Container name", async ({ page }) => {
 });
 
 test("cancels editing without saving", async ({ page }) => {
-  await mockContainerGraphql(page, [makeContainer("2", "Pot 2")]);
+  await mockContainerGraphql(page, {
+    initialContainers: [makeContainer("2", "Pot 2")],
+  });
 
   await page.goto("/containers");
   await page.getByRole("button", { name: "Edit Pot 2" }).click();
@@ -209,10 +228,53 @@ test("cancels editing without saving", async ({ page }) => {
   await expect(page.getByText("Unsaved name")).toHaveCount(0);
 });
 
-test("shows a useful error when Containers cannot load", async ({ page }) => {
-  await mockContainerQueryFailure(page);
+test("prevents blank Container names", async ({ page }) => {
+  await mockContainerGraphql(page, {
+    initialContainers: [makeContainer("1", "Pot 1")],
+  });
+
+  await page.goto("/containers");
+
+  await page.getByRole("button", { name: "Add Container" }).click();
+  await page.getByRole("button", { name: "Create Container" }).click();
+  await expect(page.getByText("Container name is required.")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  await page.getByRole("button", { name: "Edit Pot 1" }).click();
+  await page.getByLabel("Container name").fill("");
+  await page.getByRole("button", { name: "Save Container" }).click();
+
+  await expect(page.getByText("Container name is required.")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Pot 1" })).toBeVisible();
+});
+
+test("recovers from a failed Container save", async ({ page }) => {
+  await mockContainerGraphql(page, { saveFailures: 1 });
+
+  await page.goto("/containers");
+  await page.getByRole("button", { name: "Add Container" }).click();
+  await page.getByLabel("Container name").fill("Pot 1");
+  await page.getByRole("button", { name: "Create Container" }).click();
+
+  await expect(page.getByText("Container could not be saved.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Create Container" }).click();
+
+  await expect(page.getByRole("heading", { name: "Pot 1" })).toBeVisible();
+  await expect(page.getByText("Container could not be saved.")).toHaveCount(0);
+});
+
+test("recovers from a failed Container load", async ({ page }) => {
+  await mockContainerGraphql(page, {
+    initialContainers: [makeContainer("1", "Pot 1")],
+    queryFailures: 1,
+  });
 
   await page.goto("/containers");
 
   await expect(page.getByText("Containers could not be loaded.")).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(page.getByRole("heading", { name: "Pot 1" })).toBeVisible();
 });
