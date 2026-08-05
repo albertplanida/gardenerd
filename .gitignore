@@ -1,7 +1,8 @@
 temp
 
-# Jira issue PRD files
-*-[0-9]*.prd.md
+# Local planning/refactor files
+*.prd.md
+*refactor*.md
 
 # Runtime env/data
 .env
