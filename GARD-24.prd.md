@@ -365,6 +365,8 @@ Then implement the edit modal and mutation behavior.
 
 ### 6. Playwright E2E Tests With Mocked GraphQL
 
+Status: Completed.
+
 Playwright tests for GARD-24 should mock GraphQL requests in the frontend rather than depending on the real Django backend or database.
 
 Use Playwright request interception for `/graphql`:
@@ -377,6 +379,8 @@ Use Playwright request interception for `/graphql`:
 This keeps frontend E2E tests fast, deterministic, and focused on the GARD-24 UI. Backend GraphQL behavior is covered separately by GARD-26 backend tests. Full-stack E2E can be added later when the app has a stable test database and reset flow.
 
 ### 7. Playwright User Workflow Scenarios
+
+Status: Completed.
 
 Add Playwright coverage for:
 

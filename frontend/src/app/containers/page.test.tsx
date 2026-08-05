@@ -56,9 +56,7 @@ describe("ContainersPage", () => {
 
     renderContainersPage();
 
-    expect(
-      await screen.findByText("No Containers yet"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No Containers yet")).toBeInTheDocument();
     expect(
       screen.getByText("Add your first pot or growing place to get started."),
     ).toBeInTheDocument();
@@ -125,16 +123,14 @@ describe("ContainersPage", () => {
   });
 
   it("creates a Container and shows it in the list", async () => {
-    request
-      .mockResolvedValueOnce({ containers: [] })
-      .mockResolvedValueOnce({
-        createContainer: {
-          id: "1",
-          name: "Pot 1",
-          createdAt: "2026-08-01T12:00:00Z",
-          updatedAt: "2026-08-01T12:00:00Z",
-        },
-      });
+    request.mockResolvedValueOnce({ containers: [] }).mockResolvedValueOnce({
+      createContainer: {
+        id: "1",
+        name: "Pot 1",
+        createdAt: "2026-08-01T12:00:00Z",
+        updatedAt: "2026-08-01T12:00:00Z",
+      },
+    });
 
     renderContainersPage();
     await screen.findByText("No Containers yet");

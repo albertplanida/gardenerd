@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Button, Card, Container, Stack, Text, Title } from "@mantine/core";
 
 export default function Home() {
@@ -8,8 +7,8 @@ export default function Home() {
         <div>
           <Title>Gardenerd</Title>
           <Text c="dimmed" mt="xs">
-            Track what you grow, where you grow it, and what you learn along
-            the way.
+            Track what you grow, where you grow it, and what you learn along the
+            way.
           </Text>
         </div>
 
@@ -19,7 +18,7 @@ export default function Home() {
             <Text c="dimmed">
               Create and manage the pots or places where Growing Trials happen.
             </Text>
-            <Button component={Link} href="/containers" variant="light">
+            <Button component="a" href="/containers" variant="light">
               Manage Containers
             </Button>
           </Stack>

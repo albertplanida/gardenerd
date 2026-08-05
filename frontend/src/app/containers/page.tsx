@@ -174,7 +174,9 @@ export default function ContainersPage() {
 
       setContainers((currentContainers) =>
         currentContainers.map((container) =>
-          container.id === data.editContainer.id ? data.editContainer : container,
+          container.id === data.editContainer.id
+            ? data.editContainer
+            : container,
         ),
       );
       setEditingContainer(null);
@@ -262,7 +264,11 @@ export default function ContainersPage() {
             value={containerName}
           />
           <Group justify="flex-end">
-            <Button disabled={isSaving} onClick={closeCreateModal} variant="default">
+            <Button
+              disabled={isSaving}
+              onClick={closeCreateModal}
+              variant="default"
+            >
               Cancel
             </Button>
             <Button loading={isSaving} onClick={handleCreate}>
@@ -290,7 +296,11 @@ export default function ContainersPage() {
             value={containerName}
           />
           <Group justify="flex-end">
-            <Button disabled={isSaving} onClick={closeEditModal} variant="default">
+            <Button
+              disabled={isSaving}
+              onClick={closeEditModal}
+              variant="default"
+            >
               Cancel
             </Button>
             <Button loading={isSaving} onClick={handleEdit}>
