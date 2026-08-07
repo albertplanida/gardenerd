@@ -5,3 +5,36 @@ export const HEALTH_QUERY = gql`
     health
   }
 `;
+
+export const CONTAINERS_QUERY = gql`
+  query Containers {
+    containers {
+      id
+      name
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CREATE_CONTAINER_MUTATION = gql`
+  mutation CreateContainer($name: String!) {
+    createContainer(name: $name) {
+      id
+      name
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const EDIT_CONTAINER_MUTATION = gql`
+  mutation EditContainer($id: ID!, $name: String!) {
+    editContainer(id: $id, name: $name) {
+      id
+      name
+      createdAt
+      updatedAt
+    }
+  }
+`;

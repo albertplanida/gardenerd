@@ -66,6 +66,14 @@ Only the frontend is published to the local network.
 - Backend container: internal Docker network only
 - PostgreSQL container: internal Docker network only
 
+## GraphQL Auth Posture
+
+The GraphQL endpoint is currently CSRF-exempt because planned authentication is
+bearer-token based, not cookie/session based. When token auth is added, only send
+`Authorization` headers to same-origin `/graphql` or explicitly allowlisted API
+origins. If cookie/session auth is introduced later, revisit CSRF protection
+before enabling browser-callable mutations.
+
 ## Persistent Data
 
 Runtime data is stored on the host:

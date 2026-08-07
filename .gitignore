@@ -1,5 +1,9 @@
 temp
 
+# Local planning/refactor files
+*.prd.md
+*refactor*.md
+
 # Runtime env/data
 .env
 data/postgres/*
