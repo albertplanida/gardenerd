@@ -1,14 +1,11 @@
 import { GraphQLClient } from "graphql-request";
 
-export function createGraphqlClient(token?: string) {
-  return new GraphQLClient(
-    process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT ?? "/graphql",
-    {
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : undefined,
-    },
-  );
+export function createGraphqlClient() {
+  const endpoint = process.env.NEXT_PUBLIC_GRAPHQL_ENDPOINT ?? "/graphql";
+  const resolvedEndpoint =
+    typeof window !== "undefined" && endpoint.startsWith("/")
+      ? new URL(endpoint, window.location.origin).toString()
+      : endpoint;
+
+  return new GraphQLClient(resolvedEndpoint);
 }
