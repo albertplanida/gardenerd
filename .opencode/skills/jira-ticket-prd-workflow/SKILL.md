@@ -23,6 +23,31 @@ The goal is to establish the correct worktree and create temporary ticket-specif
 10. Create temporary ticket-specific PRD summary files in the ticket worktree only; do not write PRD summaries back to Jira.
 11. Use those temporary PRD files as the source of truth while coding.
 
+## Requirement Elicitation Gate
+
+Before coding, resolve vague CRUD and data-integrity requirements instead of carrying ambiguity into implementation.
+
+Ask one question at a time when Jira, comments, or `PRD.md` do not specify:
+
+- Which fields are required and which are optional.
+- Whether user-entered strings should be trimmed or otherwise normalized.
+- Maximum lengths for every user-controlled string or text field.
+- Whether validation belongs in the UI, GraphQL mutations, Django model, database, or multiple layers.
+- Whether direct ORM saves must validate automatically.
+- Whether collection GraphQL queries need fixed limits, offset pagination, cursor pagination, or capped caller-provided limits.
+- Default page size and maximum page size.
+- Deterministic ordering for list queries.
+- Error contract: plain safe GraphQL errors, typed result objects, or field-level errors.
+- Frontend behavior after creating or editing records on a paginated list.
+
+Do not accept phrases such as “reasonable limit,” “explicit maximum,” “bounded query,” or “validation error” as implementation-ready unless the concrete value or behavior is already defined.
+
+## Boundary Safety Skill Trigger
+
+When the ticket includes GraphQL create, edit, delete, or list operations, use the `graphql-crud-boundary-safety` skill before implementation.
+
+When a parent story combines model, GraphQL, and frontend subtasks, use `feature-slice-readiness-review` before declaring the parent story or PR ready.
+
 ## Worktree Rules
 
 - The main repository directory is named `Gardenerd`.
@@ -106,6 +131,8 @@ Each summary PRD should include:
 - Out-of-scope work.
 - Technical context discovered from the codebase.
 - TDD or verification plan appropriate for the ticket.
+- Any open questions that must be resolved before implementation.
+- Boundary decisions for validation, normalization, pagination, ordering, and error handling when the ticket touches CRUD behavior.
 
 Keep these files concise and practical. They are working documents, not permanent product documentation.
 
