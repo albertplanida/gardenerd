@@ -38,3 +38,39 @@ export const EDIT_CONTAINER_MUTATION = gql`
     }
   }
 `;
+
+export const PLANTS_QUERY = gql`
+  query Plants {
+    plants {
+      id
+      name
+      careNotes
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CREATE_PLANT_MUTATION = gql`
+  mutation CreatePlant($name: String!, $careNotes: String!) {
+    createPlant(name: $name, careNotes: $careNotes) {
+      id
+      name
+      careNotes
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const EDIT_PLANT_MUTATION = gql`
+  mutation EditPlant($id: ID!, $name: String!, $careNotes: String!) {
+    editPlant(id: $id, name: $name, careNotes: $careNotes) {
+      id
+      name
+      careNotes
+      createdAt
+      updatedAt
+    }
+  }
+`;

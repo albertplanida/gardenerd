@@ -14,22 +14,21 @@ import {
 } from "@mantine/core";
 
 import {
-  createContainer,
-  editContainer,
-  type GardenContainer,
-  listContainers,
-} from "@/graphql/containers";
+  createPlant,
+  editPlant,
+  listPlants,
+  type Plant,
+} from "@/graphql/plants";
 import { AppNavigation } from "@/components/AppNavigation";
 
-import { ContainerFormModal } from "./ContainerFormModal";
+import { PlantFormModal } from "./PlantFormModal";
 
-type ModalState =
-  { mode: "create" } | { mode: "edit"; container: GardenContainer } | null;
+type ModalState = { mode: "create" } | { mode: "edit"; plant: Plant } | null;
 
 type Status = "loading" | "ready" | "error";
 
-export default function ContainersPage() {
-  const [containers, setContainers] = useState<GardenContainer[]>([]);
+export default function PlantsPage() {
+  const [plants, setPlants] = useState<Plant[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [saveError, setSaveError] = useState(false);
@@ -38,14 +37,14 @@ export default function ContainersPage() {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadContainers() {
+    async function loadPlants() {
       setStatus("loading");
 
       try {
-        const data = await listContainers();
+        const data = await listPlants();
 
         if (isMounted) {
-          setContainers(data);
+          setPlants(data);
           setStatus("ready");
         }
       } catch {
@@ -55,20 +54,20 @@ export default function ContainersPage() {
       }
     }
 
-    loadContainers();
+    loadPlants();
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  async function retryLoadContainers() {
+  async function retryLoadPlants() {
     setStatus("loading");
 
     try {
-      const data = await listContainers();
+      const data = await listPlants();
 
-      setContainers(data);
+      setPlants(data);
       setStatus("ready");
     } catch {
       setStatus("error");
@@ -87,12 +86,12 @@ export default function ContainersPage() {
     }
   }
 
-  function openEditModal(container: GardenContainer) {
+  function openEditModal(plant: Plant) {
     setSaveError(false);
-    setModalState({ mode: "edit", container });
+    setModalState({ mode: "edit", plant });
   }
 
-  async function handleSave(name: string) {
+  async function handleSave(name: string, careNotes: string) {
     if (!modalState) {
       return;
     }
@@ -102,17 +101,17 @@ export default function ContainersPage() {
 
     try {
       if (modalState.mode === "edit") {
-        const updated = await editContainer(modalState.container.id, name);
+        const updated = await editPlant(modalState.plant.id, name, careNotes);
 
-        setContainers((currentContainers) =>
-          currentContainers.map((container) =>
-            container.id === updated.id ? updated : container,
+        setPlants((currentPlants) =>
+          currentPlants.map((plant) =>
+            plant.id === updated.id ? updated : plant,
           ),
         );
       } else {
-        const created = await createContainer(name);
+        const created = await createPlant(name, careNotes);
 
-        setContainers((currentContainers) => [...currentContainers, created]);
+        setPlants((currentPlants) => [...currentPlants, created]);
       }
 
       setModalState(null);
@@ -130,58 +129,61 @@ export default function ContainersPage() {
 
         <Group justify="space-between" align="flex-start">
           <div>
-            <Title>Containers</Title>
+            <Title>Plants</Title>
             <Text c="dimmed" mt="xs">
-              Track the pots and places where Growing Trials happen.
+              Keep notes for plants you may want to grow.
             </Text>
           </div>
 
-          <Button onClick={openCreateModal}>Add Container</Button>
+          <Button onClick={openCreateModal}>Add Plant</Button>
         </Group>
 
         {status === "loading" ? (
           <Group gap="sm">
             <Loader size="sm" />
-            <Text>Loading Containers...</Text>
+            <Text>Loading Plants...</Text>
           </Group>
         ) : null}
 
         {status === "error" ? (
-          <Alert color="red" title="Containers could not be loaded.">
+          <Alert color="red" title="Plants could not be loaded.">
             <Stack align="flex-start" gap="sm">
               <Text>Check that the local Gardenerd API is running.</Text>
-              <Button onClick={retryLoadContainers} size="xs" variant="light">
+              <Button onClick={retryLoadPlants} size="xs" variant="light">
                 Try again
               </Button>
             </Stack>
           </Alert>
         ) : null}
 
-        {status === "ready" && containers.length === 0 ? (
+        {status === "ready" && plants.length === 0 ? (
           <Card withBorder radius="md">
             <Stack gap="xs">
-              <Title order={2}>No Containers yet</Title>
+              <Title order={2}>No Plants yet</Title>
               <Text c="dimmed">
-                Add your first pot or growing place to get started.
+                Add your first plant and capture plain text care notes.
               </Text>
             </Stack>
           </Card>
         ) : null}
 
-        {status === "ready" && containers.length > 0 ? (
+        {status === "ready" && plants.length > 0 ? (
           <Stack gap="sm">
-            {containers.map((container) => (
-              <Card key={container.id} withBorder radius="md">
-                <Group justify="space-between">
-                  <Title order={3}>{container.name}</Title>
-                  <Button
-                    aria-label={`Edit ${container.name}`}
-                    onClick={() => openEditModal(container)}
-                    variant="subtle"
-                  >
-                    Edit
-                  </Button>
-                </Group>
+            {plants.map((plant) => (
+              <Card key={plant.id} withBorder radius="md">
+                <Stack gap="xs">
+                  <Group justify="space-between">
+                    <Title order={3}>{plant.name}</Title>
+                    <Button
+                      aria-label={`Edit ${plant.name}`}
+                      onClick={() => openEditModal(plant)}
+                      variant="subtle"
+                    >
+                      Edit
+                    </Button>
+                  </Group>
+                  {plant.careNotes ? <Text>{plant.careNotes}</Text> : null}
+                </Stack>
               </Card>
             ))}
           </Stack>
@@ -189,10 +191,13 @@ export default function ContainersPage() {
       </Stack>
 
       {modalState ? (
-        <ContainerFormModal
+        <PlantFormModal
           error={saveError}
+          initialCareNotes={
+            modalState.mode === "edit" ? modalState.plant.careNotes : undefined
+          }
           initialName={
-            modalState.mode === "edit" ? modalState.container.name : undefined
+            modalState.mode === "edit" ? modalState.plant.name : undefined
           }
           isSaving={isSaving}
           mode={modalState.mode}
