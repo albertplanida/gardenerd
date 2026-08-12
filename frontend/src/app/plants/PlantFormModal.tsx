@@ -21,6 +21,10 @@ type PlantFormModalProps = {
 };
 
 const requiredMessage = "Plant name is required.";
+const plantNameMaxLength = 255;
+const plantCareNotesMaxLength = 5000;
+const nameMaxLengthMessage = `Plant name must be ${plantNameMaxLength} characters or fewer.`;
+const careNotesMaxLengthMessage = `Plant care notes must be ${plantCareNotesMaxLength} characters or fewer.`;
 
 export function PlantFormModal({
   opened,
@@ -35,17 +39,35 @@ export function PlantFormModal({
   const [name, setName] = useState(initialName);
   const [careNotes, setCareNotes] = useState(initialCareNotes);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [careNotesError, setCareNotesError] = useState<string | null>(null);
 
   async function handleSubmit() {
     const trimmedName = name.trim();
+    const trimmedCareNotes = careNotes.trim();
+    let hasError = false;
 
     if (!trimmedName) {
       setNameError(requiredMessage);
+      hasError = true;
+    } else if (trimmedName.length > plantNameMaxLength) {
+      setNameError(nameMaxLengthMessage);
+      hasError = true;
+    } else {
+      setNameError(null);
+    }
+
+    if (trimmedCareNotes.length > plantCareNotesMaxLength) {
+      setCareNotesError(careNotesMaxLengthMessage);
+      hasError = true;
+    } else {
+      setCareNotesError(null);
+    }
+
+    if (hasError) {
       return;
     }
 
-    setNameError(null);
-    await onSubmit(trimmedName, careNotes.trim());
+    await onSubmit(trimmedName, trimmedCareNotes);
   }
 
   const title = mode === "create" ? "Add Plant" : "Edit Plant";
@@ -63,12 +85,15 @@ export function PlantFormModal({
         <TextInput
           error={nameError}
           label="Plant name"
+          maxLength={plantNameMaxLength}
           onChange={(event) => setName(event.currentTarget.value)}
           value={name}
         />
         <Textarea
           autosize
+          error={careNotesError}
           label="Care notes"
+          maxLength={plantCareNotesMaxLength}
           minRows={4}
           onChange={(event) => setCareNotes(event.currentTarget.value)}
           value={careNotes}

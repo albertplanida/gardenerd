@@ -23,12 +23,17 @@ import { AppNavigation } from "@/components/AppNavigation";
 
 import { PlantFormModal } from "./PlantFormModal";
 
+const plantsPageSize = 20;
+
 type ModalState = { mode: "create" } | { mode: "edit"; plant: Plant } | null;
 
 type Status = "loading" | "ready" | "error";
 
 export default function PlantsPage() {
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
   const [status, setStatus] = useState<Status>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [saveError, setSaveError] = useState(false);
@@ -41,10 +46,12 @@ export default function PlantsPage() {
       setStatus("loading");
 
       try {
-        const data = await listPlants();
+        const data = await listPlants(plantsPageSize, offset);
 
         if (isMounted) {
-          setPlants(data);
+          setPlants(data.items);
+          setHasNextPage(data.hasNextPage);
+          setHasPreviousPage(data.hasPreviousPage);
           setStatus("ready");
         }
       } catch {
@@ -59,19 +66,29 @@ export default function PlantsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [offset]);
 
   async function retryLoadPlants() {
     setStatus("loading");
 
     try {
-      const data = await listPlants();
+      const data = await listPlants(plantsPageSize, offset);
 
-      setPlants(data);
+      setPlants(data.items);
+      setHasNextPage(data.hasNextPage);
+      setHasPreviousPage(data.hasPreviousPage);
       setStatus("ready");
     } catch {
       setStatus("error");
     }
+  }
+
+  function goToPreviousPage() {
+    setOffset((currentOffset) => Math.max(0, currentOffset - plantsPageSize));
+  }
+
+  function goToNextPage() {
+    setOffset((currentOffset) => currentOffset + plantsPageSize);
   }
 
   function openCreateModal() {
@@ -186,6 +203,18 @@ export default function PlantsPage() {
                 </Stack>
               </Card>
             ))}
+            <Group justify="flex-end">
+              <Button
+                disabled={!hasPreviousPage}
+                onClick={goToPreviousPage}
+                variant="default"
+              >
+                Previous
+              </Button>
+              <Button disabled={!hasNextPage} onClick={goToNextPage}>
+                Next
+              </Button>
+            </Group>
           </Stack>
         ) : null}
       </Stack>

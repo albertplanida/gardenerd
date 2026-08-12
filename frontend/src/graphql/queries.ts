@@ -40,13 +40,17 @@ export const EDIT_CONTAINER_MUTATION = gql`
 `;
 
 export const PLANTS_QUERY = gql`
-  query Plants {
-    plants {
-      id
-      name
-      careNotes
-      createdAt
-      updatedAt
+  query Plants($limit: Int!, $offset: Int!) {
+    plants(limit: $limit, offset: $offset) {
+      items {
+        id
+        name
+        careNotes
+        createdAt
+        updatedAt
+      }
+      hasNextPage
+      hasPreviousPage
     }
   }
 `;

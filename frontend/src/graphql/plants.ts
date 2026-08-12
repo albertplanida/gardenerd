@@ -13,8 +13,14 @@ export type Plant = {
   updatedAt: string;
 };
 
+export type PlantPage = {
+  items: Plant[];
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
 type PlantsResponse = {
-  plants: Plant[];
+  plants: PlantPage;
 };
 
 type CreatePlantResponse = {
@@ -25,9 +31,12 @@ type EditPlantResponse = {
   editPlant: Plant;
 };
 
-export async function listPlants() {
+export async function listPlants(limit: number, offset: number) {
   const client = createGraphqlClient();
-  const data = await client.request<PlantsResponse>(PLANTS_QUERY);
+  const data = await client.request<PlantsResponse>(PLANTS_QUERY, {
+    limit,
+    offset,
+  });
 
   return data.plants;
 }

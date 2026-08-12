@@ -5,6 +5,28 @@ import { createPlant, editPlant, listPlants } from "@/graphql/plants";
 
 import PlantsPage from "./page";
 
+const emptyPlantPage = {
+  items: [],
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
+
+const tomato = {
+  id: "1",
+  name: "Tomato",
+  careNotes: "Full sun and steady water.",
+  createdAt: "2026-08-01T12:00:00Z",
+  updatedAt: "2026-08-01T12:00:00Z",
+};
+
+const basil = {
+  id: "2",
+  name: "Basil",
+  careNotes: "",
+  createdAt: "2026-08-01T12:00:00Z",
+  updatedAt: "2026-08-01T12:00:00Z",
+};
+
 jest.mock("@/graphql/plants", () => ({
   createPlant: jest.fn(),
   editPlant: jest.fn(),
@@ -48,7 +70,7 @@ describe("PlantsPage", () => {
   });
 
   it("shows an empty state when there are no Plants", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
 
     renderPlantsPage();
 
@@ -61,22 +83,11 @@ describe("PlantsPage", () => {
   });
 
   it("renders existing Plant names and care notes", async () => {
-    jest.mocked(listPlants).mockResolvedValue([
-      {
-        id: "1",
-        name: "Tomato",
-        careNotes: "Full sun and steady water.",
-        createdAt: "2026-08-01T12:00:00Z",
-        updatedAt: "2026-08-01T12:00:00Z",
-      },
-      {
-        id: "2",
-        name: "Basil",
-        careNotes: "",
-        createdAt: "2026-08-01T12:00:00Z",
-        updatedAt: "2026-08-01T12:00:00Z",
-      },
-    ]);
+    jest.mocked(listPlants).mockResolvedValue({
+      items: [tomato, basil],
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
 
     renderPlantsPage();
 
@@ -96,7 +107,7 @@ describe("PlantsPage", () => {
   });
 
   it("opens the create modal from the Add Plant action", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
 
     renderPlantsPage();
     await screen.findByText("No Plants yet");
@@ -111,7 +122,7 @@ describe("PlantsPage", () => {
   });
 
   it("validates blank Plant names while allowing blank care notes", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
 
     renderPlantsPage();
     await screen.findByText("No Plants yet");
@@ -126,8 +137,32 @@ describe("PlantsPage", () => {
     expect(createPlant).not.toHaveBeenCalled();
   });
 
+  it("validates Plant field length limits", async () => {
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
+
+    renderPlantsPage();
+    await screen.findByText("No Plants yet");
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Plant" }));
+    fireEvent.change(screen.getByLabelText("Plant name"), {
+      target: { value: "x".repeat(256) },
+    });
+    fireEvent.change(screen.getByLabelText("Care notes"), {
+      target: { value: "x".repeat(5001) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create Plant" }));
+
+    expect(
+      screen.getByText("Plant name must be 255 characters or fewer."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Plant care notes must be 5000 characters or fewer."),
+    ).toBeInTheDocument();
+    expect(createPlant).not.toHaveBeenCalled();
+  });
+
   it("creates a Plant with blank care notes and shows it in the list", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
     jest.mocked(createPlant).mockResolvedValue({
       id: "1",
       name: "Tomato",
@@ -155,7 +190,7 @@ describe("PlantsPage", () => {
   });
 
   it("creates a Plant with care notes", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
     jest.mocked(createPlant).mockResolvedValue({
       id: "1",
       name: "Tomato",
@@ -183,15 +218,11 @@ describe("PlantsPage", () => {
   });
 
   it("opens the edit modal with the selected Plant values", async () => {
-    jest.mocked(listPlants).mockResolvedValue([
-      {
-        id: "1",
-        name: "Tomato",
-        careNotes: "Full sun",
-        createdAt: "2026-08-01T12:00:00Z",
-        updatedAt: "2026-08-01T12:00:00Z",
-      },
-    ]);
+    jest.mocked(listPlants).mockResolvedValue({
+      items: [{ ...tomato, careNotes: "Full sun" }],
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
 
     renderPlantsPage();
     await screen.findByText("Tomato");
@@ -206,15 +237,11 @@ describe("PlantsPage", () => {
   });
 
   it("edits a Plant and shows the updated values in the list", async () => {
-    jest.mocked(listPlants).mockResolvedValue([
-      {
-        id: "1",
-        name: "Tomato",
-        careNotes: "Full sun",
-        createdAt: "2026-08-01T12:00:00Z",
-        updatedAt: "2026-08-01T12:00:00Z",
-      },
-    ]);
+    jest.mocked(listPlants).mockResolvedValue({
+      items: [{ ...tomato, careNotes: "Full sun" }],
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
     jest.mocked(editPlant).mockResolvedValue({
       id: "1",
       name: "Cherry Tomato",
@@ -248,7 +275,7 @@ describe("PlantsPage", () => {
   });
 
   it("shows an error when saving fails", async () => {
-    jest.mocked(listPlants).mockResolvedValue([]);
+    jest.mocked(listPlants).mockResolvedValue(emptyPlantPage);
     jest.mocked(createPlant).mockRejectedValue(new Error("Create failed"));
 
     renderPlantsPage();
@@ -263,5 +290,64 @@ describe("PlantsPage", () => {
     expect(
       await screen.findByText("Plant could not be saved."),
     ).toBeInTheDocument();
+  });
+
+  it("loads the first Plant page and navigates to the next page", async () => {
+    jest
+      .mocked(listPlants)
+      .mockResolvedValueOnce({
+        items: [tomato],
+        hasNextPage: true,
+        hasPreviousPage: false,
+      })
+      .mockResolvedValueOnce({
+        items: [basil],
+        hasNextPage: false,
+        hasPreviousPage: true,
+      });
+
+    renderPlantsPage();
+
+    expect(await screen.findByText("Tomato")).toBeInTheDocument();
+    expect(listPlants).toHaveBeenLastCalledWith(20, 0);
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByText("Basil")).toBeInTheDocument();
+    expect(listPlants).toHaveBeenLastCalledWith(20, 20);
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
+  });
+
+  it("navigates to the previous Plant page", async () => {
+    jest
+      .mocked(listPlants)
+      .mockResolvedValueOnce({
+        items: [tomato],
+        hasNextPage: true,
+        hasPreviousPage: false,
+      })
+      .mockResolvedValueOnce({
+        items: [basil],
+        hasNextPage: false,
+        hasPreviousPage: true,
+      })
+      .mockResolvedValueOnce({
+        items: [tomato],
+        hasNextPage: true,
+        hasPreviousPage: false,
+      });
+
+    renderPlantsPage();
+
+    await screen.findByText("Tomato");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await screen.findByText("Basil");
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+
+    expect(await screen.findByText("Tomato")).toBeInTheDocument();
+    expect(listPlants).toHaveBeenLastCalledWith(20, 0);
   });
 });
