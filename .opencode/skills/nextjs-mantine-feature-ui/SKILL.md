@@ -37,6 +37,29 @@ Use this skill when implementing a simple frontend feature screen in a Next.js a
 - Validation state for invalid form input.
 - Saving state that prevents duplicate submissions.
 - Success behavior that updates visible UI or refetches data.
+- Pagination controls when the backend returns paginated collections.
+
+## Backend Constraint Mirroring
+
+When a form edits data that is validated by the backend:
+
+- Mirror authoritative backend constraints in the UI for immediate feedback.
+- Use `maxLength` for single-line and multiline text inputs when backend maximums exist.
+- Show visible validation messages that match the user-facing backend intent.
+- Trim values consistently with the backend before submission.
+- Do not treat frontend validation as security enforcement; backend GraphQL tests must still cover direct invalid requests.
+- Ask one question at a time if the backend maximum length, required fields, or trimming rules are unspecified.
+
+## Paginated Collection UI
+
+When a GraphQL list is paginated or bounded:
+
+- Pass explicit page-size and offset/cursor arguments from the frontend helper.
+- Render Previous/Next or Load More controls according to the PRD.
+- Disable navigation controls based on backend metadata rather than guessing from rendered item count.
+- Keep loading and retry behavior scoped to the current page.
+- Define and test create/edit behavior while viewing a paginated page.
+- Avoid accumulating unbounded records in browser state unless the product explicitly calls for Load More behavior.
 
 ## Accessibility And Tests
 
@@ -45,6 +68,8 @@ Use this skill when implementing a simple frontend feature screen in a Next.js a
 - Prefer tests that query by role, label, and visible text.
 - Avoid implementation-detail selectors unless no accessible alternative exists.
 - For modal titles, avoid nested heading markup that causes invalid HTML.
+- Test frontend validation for backend length limits when the UI mirrors them.
+- Test pagination navigation arguments and disabled states when lists are paginated.
 
 ## Next.js Notes
 

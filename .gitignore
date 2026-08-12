@@ -3,6 +3,7 @@ temp
 # Local planning/refactor files
 *.prd.md
 *refactor*.md
+**/refactoring-*.md
 
 # Runtime env/data
 .env

@@ -19,6 +19,7 @@ import {
   type GardenContainer,
   listContainers,
 } from "@/graphql/containers";
+import { AppNavigation } from "@/components/AppNavigation";
 
 import { ContainerFormModal } from "./ContainerFormModal";
 
@@ -125,6 +126,8 @@ export default function ContainersPage() {
   return (
     <Container py="xl">
       <Stack gap="lg">
+        <AppNavigation />
+
         <Group justify="space-between" align="flex-start">
           <div>
             <Title>Containers</Title>
