@@ -84,3 +84,14 @@ data/media/
 ```
 
 These directories should be backed up.
+
+## Growing Trial Lifecycle
+
+`GrowingTrial.objects.create_planned()` is the normal application creation path,
+and trials created through the application always begin in the planned state.
+The database constrains stored statuses to the valid lifecycle values.
+
+Bulk operations and raw SQL bypass the initial-status domain rule, but they do
+not bypass the valid-status database constraint. If a future lifecycle requires
+an insert-only status rule to be a hard database requirement, revisit this
+enforcement model rather than relying solely on the creation manager.

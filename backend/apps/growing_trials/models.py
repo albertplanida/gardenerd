@@ -1,14 +1,22 @@
-from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.containers.models import Container
 from apps.plants.models import Plant
 
-GROWING_TRIAL_INITIAL_STATUS_MESSAGE = 'New Growing Trials must start as planned'
-
 
 class GrowingTrialStatus(models.TextChoices):
     PLANNED = 'planned', 'Planned'
+
+
+class GrowingTrialManager(models.Manager):
+    def create_planned(self, plant: Plant, container: Container):
+        trial = self.model(
+            plant=plant,
+            container=container,
+            status=GrowingTrialStatus.PLANNED,
+        )
+        trial.save(using=self._db)
+        return trial
 
 
 class GrowingTrial(models.Model):
@@ -29,11 +37,17 @@ class GrowingTrial(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    objects = GrowingTrialManager()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=GrowingTrialStatus.values),
+                name='growing_trial_valid_status',
+            ),
+        ]
 
     def save(self, *args, **kwargs):
-        if self._state.adding and self.status != GrowingTrialStatus.PLANNED:
-            raise ValidationError({'status': GROWING_TRIAL_INITIAL_STATUS_MESSAGE})
-
         self.full_clean()
         return super().save(*args, **kwargs)
 

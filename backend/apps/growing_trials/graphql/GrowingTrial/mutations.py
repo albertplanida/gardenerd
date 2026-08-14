@@ -32,9 +32,7 @@ class GrowingTrialMutations:
         plant_id: strawberry.ID,
         container_id: strawberry.ID,
     ) -> GrowingTrialType:
-        trial = GrowingTrial(
+        return GrowingTrial.objects.create_planned(
             plant=_get_plant(plant_id),
             container=_get_container(container_id),
         )
-        trial.save()
-        return trial

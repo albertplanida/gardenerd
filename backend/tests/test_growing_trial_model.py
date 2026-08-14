@@ -1,13 +1,10 @@
 import pytest
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 
 from apps.containers.models import Container
-from apps.growing_trials.models import (
-    GROWING_TRIAL_INITIAL_STATUS_MESSAGE,
-    GrowingTrial,
-    GrowingTrialStatus,
-)
+from apps.growing_trials.models import GrowingTrial, GrowingTrialStatus
 from apps.plants.models import Plant
 
 
@@ -22,8 +19,8 @@ def container():
 
 
 @pytest.mark.django_db
-def test_growing_trial_can_be_created_as_planned(plant, container):
-    trial = GrowingTrial.objects.create(plant=plant, container=container)
+def test_create_planned_creates_a_valid_planned_trial(plant, container):
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
 
     assert trial.plant == plant
     assert trial.container == container
@@ -68,15 +65,63 @@ def test_growing_trial_requires_each_relationship(
 
 
 @pytest.mark.django_db
-def test_growing_trial_rejects_non_planned_initial_status(plant, container):
+def test_direct_creation_uses_the_field_default(plant, container):
+    trial = GrowingTrial.objects.create(plant=plant, container=container)
+
+    assert trial.status == GrowingTrialStatus.PLANNED
+
+
+@pytest.mark.django_db
+def test_normal_save_validates_status(plant, container):
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
+    trial.status = 'invalid'
+
     with pytest.raises(ValidationError) as error:
-        GrowingTrial.objects.create(
-            plant=plant,
-            container=container,
-            status='active',
+        trial.save()
+
+    assert 'status' in error.value.message_dict
+    trial.refresh_from_db()
+    assert trial.status == GrowingTrialStatus.PLANNED
+
+
+@pytest.mark.django_db
+def test_bulk_create_bypasses_the_domain_creation_method(plant, container):
+    trial = GrowingTrial(plant=plant, container=container)
+
+    GrowingTrial.objects.bulk_create([trial])
+
+    assert trial.status == GrowingTrialStatus.PLANNED
+    assert GrowingTrial.objects.get().status == GrowingTrialStatus.PLANNED
+
+
+@pytest.mark.django_db
+def test_queryset_update_bypasses_model_validation(plant, container):
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
+
+    assert (
+        GrowingTrial.objects.filter(pk=trial.pk).update(
+            status=GrowingTrialStatus.PLANNED
+        )
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_database_rejects_invalid_status_from_bulk_create(plant, container):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        GrowingTrial.objects.bulk_create(
+            [GrowingTrial(plant=plant, container=container, status='invalid')]
         )
 
-    assert error.value.message_dict == {
-        'status': [GROWING_TRIAL_INITIAL_STATUS_MESSAGE]
-    }
     assert GrowingTrial.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_database_rejects_invalid_status_from_queryset_update(plant, container):
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        GrowingTrial.objects.filter(pk=trial.pk).update(status='invalid')
+
+    trial.refresh_from_db()
+    assert trial.status == GrowingTrialStatus.PLANNED
