@@ -28,15 +28,39 @@ Create a new Django app only when:
 3. Inspect existing Django apps under `backend/apps/`.
 4. Decide whether to reuse an existing app or create a new app.
 5. Confirm the exact model fields, defaults, nullability, relationships, and out-of-scope fields.
-6. Add a failing pytest model test first.
-7. Run the focused test and confirm it fails for the expected reason.
-8. Add or update the model.
-9. Register a new app in `INSTALLED_APPS` only if a new app was created.
-10. Run the focused test again.
-11. Generate migrations.
-12. Inspect the generated migration before applying it.
-13. Apply migrations locally using SQLite during normal coding.
-14. Run full backend verification.
+6. Confirm validation scope for direct ORM saves before adding custom `clean()` or `save()` behavior.
+7. Add a failing pytest model test first.
+8. Run the focused test and confirm it fails for the expected reason.
+9. Add or update the model.
+10. Register a new app in `INSTALLED_APPS` only if a new app was created.
+11. Run the focused test again.
+12. Generate migrations.
+13. Inspect the generated migration before applying it.
+14. Apply migrations locally using SQLite during normal coding.
+15. Run full backend verification.
+
+## Validation Scope Questions
+
+Ask one question at a time when the ticket or PRD does not specify:
+
+- Whether the model should normalize user-entered strings.
+- Whether blank or whitespace-only values are invalid.
+- Maximum lengths for text fields.
+- Whether validation must run only at GraphQL/form boundaries or on every model save.
+- Whether existing rows could violate the new constraints and need a data migration.
+
+Do not override `save()` by default. Add model-level save validation only when the requirement explicitly covers direct ORM/admin writes or the user confirms that scope.
+
+## Model Validation Pattern
+
+When model-level validation is required:
+
+- Put validation constants near the model.
+- Normalize before Django field validators run when normalized values determine validity.
+- Call `full_clean()` from `save()` so direct ORM writes are checked.
+- If `save(update_fields=...)` is used, ensure normalized fields are included in `update_fields` before saving.
+- Use explicit domain messages for expected validation failures.
+- Add tests for direct ORM creates and edits that prove invalid data is rejected and valid data is normalized.
 
 ## Local Development Database
 
@@ -183,6 +207,8 @@ A Django model task is complete when:
 - The model is implemented in the correct app.
 - A new app is created and registered only if needed.
 - Model tests cover the required behavior.
+- Model validation scope is explicit when custom validation was added.
+- Direct ORM save behavior is tested when every-save validation is required.
 - Migrations are generated and inspected.
 - Local SQLite migration succeeds.
 - Full backend tests pass.

@@ -33,6 +33,10 @@ describe("ContainersPage", () => {
 
     renderContainersPage();
 
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "href",
+      "/",
+    );
     expect(
       screen.getByRole("heading", { name: "Containers" }),
     ).toBeInTheDocument();

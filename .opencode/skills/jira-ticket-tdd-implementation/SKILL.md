@@ -13,6 +13,8 @@ Use this skill when the user asks to implement a Jira issue or subtask with Test
 - Read the Jira issue and any relevant local PRD/spec files before editing.
 - If PRD files for Jira issues are ignored, do not force-add them unless the user explicitly requests it.
 - Create a todo list for non-trivial work.
+- Use `graphql-crud-boundary-safety` when the ticket changes GraphQL CRUD operations.
+- Use `feature-slice-readiness-review` before finalizing a parent story or cross-layer feature.
 - Work in small TDD increments: write failing tests, run them, implement the smallest passing change, then refactor.
 - Make incremental commits after each meaningful green increment.
 - Prefix every commit message with the Jira key, for example `GARD-24 add container list page`.

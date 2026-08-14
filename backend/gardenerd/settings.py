@@ -43,6 +43,7 @@ CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 INSTALLED_APPS = [
     'strawberry.django',
     'apps.containers',
+    'apps.plants',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
