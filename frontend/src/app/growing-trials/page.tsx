@@ -15,11 +15,35 @@ import {
 } from "@mantine/core";
 
 import { AppNavigation } from "@/components/AppNavigation";
-import { listGrowingTrials, type GrowingTrial } from "@/graphql/growingTrials";
+import { listContainers, type GardenContainer } from "@/graphql/containers";
+import {
+  createGrowingTrial,
+  listGrowingTrials,
+  type GrowingTrial,
+} from "@/graphql/growingTrials";
+import { listPlants, type Plant } from "@/graphql/plants";
+
+import { GrowingTrialFormModal } from "./GrowingTrialFormModal";
 
 const growingTrialsPageSize = 20;
 
 type Status = "loading" | "ready" | "error";
+
+async function listAllPlants() {
+  const pageSize = 50;
+  const plants: Plant[] = [];
+  let offset = 0;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const page = await listPlants(pageSize, offset);
+    plants.push(...page.items);
+    hasNextPage = page.hasNextPage;
+    offset += pageSize;
+  }
+
+  return plants;
+}
 
 export default function GrowingTrialsPage() {
   const [trials, setTrials] = useState<GrowingTrial[]>([]);
@@ -27,6 +51,13 @@ export default function GrowingTrialsPage() {
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
   const [status, setStatus] = useState<Status>("loading");
+  const [modalOpened, setModalOpened] = useState(false);
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [containers, setContainers] = useState<GardenContainer[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false);
+  const [optionsError, setOptionsError] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   async function loadTrials(currentOffset: number) {
     setStatus("loading");
@@ -74,17 +105,66 @@ export default function GrowingTrialsPage() {
     };
   }, [offset]);
 
+  async function loadOptions() {
+    setIsLoadingOptions(true);
+    setOptionsError(false);
+
+    try {
+      const [loadedPlants, loadedContainers] = await Promise.all([
+        listAllPlants(),
+        listContainers(),
+      ]);
+      setPlants(loadedPlants);
+      setContainers(loadedContainers);
+    } catch {
+      setOptionsError(true);
+    } finally {
+      setIsLoadingOptions(false);
+    }
+  }
+
+  function openCreateModal() {
+    setModalOpened(true);
+    setSaveError(false);
+    loadOptions();
+  }
+
+  function closeCreateModal() {
+    if (!isSaving) {
+      setModalOpened(false);
+      setSaveError(false);
+    }
+  }
+
+  async function handleCreate(plantId: string, containerId: string) {
+    setIsSaving(true);
+    setSaveError(false);
+
+    try {
+      await createGrowingTrial(plantId, containerId);
+      await loadTrials(offset);
+      setModalOpened(false);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Container py="xl">
       <Stack gap="lg">
         <AppNavigation />
 
-        <div>
-          <Title>Growing Trials</Title>
-          <Text c="dimmed" mt="xs">
-            Plan one Plant in one Container and track each growing attempt.
-          </Text>
-        </div>
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <div>
+            <Title>Growing Trials</Title>
+            <Text c="dimmed" mt="xs">
+              Plan one Plant in one Container and track each growing attempt.
+            </Text>
+          </div>
+          <Button onClick={openCreateModal}>Add Growing Trial</Button>
+        </Group>
 
         {status === "loading" ? (
           <Group gap="sm">
@@ -164,6 +244,21 @@ export default function GrowingTrialsPage() {
           </Stack>
         ) : null}
       </Stack>
+
+      {modalOpened ? (
+        <GrowingTrialFormModal
+          containers={containers}
+          isLoadingOptions={isLoadingOptions}
+          isSaving={isSaving}
+          onClose={closeCreateModal}
+          onRetryOptions={loadOptions}
+          onSubmit={handleCreate}
+          opened
+          optionsError={optionsError}
+          plants={plants}
+          saveError={saveError}
+        />
+      ) : null}
     </Container>
   );
 }
