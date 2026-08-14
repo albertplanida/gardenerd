@@ -28,4 +28,16 @@ describe("Home", () => {
       "/containers",
     );
   });
+
+  it("links to Growing Trial management", () => {
+    render(
+      <MantineProvider>
+        <Home />
+      </MantineProvider>,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Manage Growing Trials" }),
+    ).toHaveAttribute("href", "/growing-trials");
+  });
 });

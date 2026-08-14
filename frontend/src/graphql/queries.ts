@@ -78,3 +78,64 @@ export const EDIT_PLANT_MUTATION = gql`
     }
   }
 `;
+
+export const GROWING_TRIALS_QUERY = gql`
+  query GrowingTrials($limit: Int!, $after: String) {
+    growingTrials(limit: $limit, after: $after) {
+      items {
+        id
+        plant {
+          id
+          name
+        }
+        container {
+          id
+          name
+        }
+        status
+        createdAt
+        updatedAt
+      }
+      hasNextPage
+      hasPreviousPage
+      endCursor
+    }
+  }
+`;
+
+export const GROWING_TRIAL_PLANT_OPTIONS_QUERY = gql`
+  query GrowingTrialPlantOptions($search: String, $limit: Int!) {
+    growingTrialPlantOptions(search: $search, limit: $limit) {
+      id
+      name
+    }
+  }
+`;
+
+export const GROWING_TRIAL_CONTAINER_OPTIONS_QUERY = gql`
+  query GrowingTrialContainerOptions($search: String, $limit: Int!) {
+    growingTrialContainerOptions(search: $search, limit: $limit) {
+      id
+      name
+    }
+  }
+`;
+
+export const CREATE_GROWING_TRIAL_MUTATION = gql`
+  mutation CreateGrowingTrial($plantId: ID!, $containerId: ID!) {
+    createGrowingTrial(plantId: $plantId, containerId: $containerId) {
+      id
+      plant {
+        id
+        name
+      }
+      container {
+        id
+        name
+      }
+      status
+      createdAt
+      updatedAt
+    }
+  }
+`;
