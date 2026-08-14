@@ -9,6 +9,7 @@ import {
   Select,
   Stack,
   Text,
+  VisuallyHidden,
 } from "@mantine/core";
 
 import type { GrowingTrialOption } from "@/graphql/growingTrials";
@@ -16,8 +17,10 @@ import type { GrowingTrialOption } from "@/graphql/growingTrials";
 type OptionResource = {
   search: string;
   setSearch: (search: string) => void;
+  setSearchFromSelection: (search: string) => void;
   options: GrowingTrialOption[];
   isLoading: boolean;
+  isInitialLoading: boolean;
   error: boolean;
   retry: () => Promise<void>;
   noRecords: boolean;
@@ -104,11 +107,23 @@ export function GrowingTrialFormModal({
     >
       <form onSubmit={handleSubmit}>
         <Stack gap="md">
-          {plants.isLoading || containers.isLoading ? (
+          {plants.isInitialLoading || containers.isInitialLoading ? (
             <Group gap="sm" role="status">
               <Loader size="sm" />
               <Text>Loading Plant and Container options...</Text>
             </Group>
+          ) : null}
+
+          {(plants.isLoading && !plants.isInitialLoading) ||
+          (containers.isLoading && !containers.isInitialLoading) ? (
+            <VisuallyHidden aria-live="polite" role="status">
+              {plants.isLoading && !plants.isInitialLoading
+                ? "Searching Plants..."
+                : null}
+              {containers.isLoading && !containers.isInitialLoading
+                ? "Searching Containers..."
+                : null}
+            </VisuallyHidden>
           ) : null}
 
           {plants.error ? (
@@ -165,7 +180,7 @@ export function GrowingTrialFormModal({
             nothingFoundMessage={
               plants.search.trim() ? "No matching Plants" : "No Plants"
             }
-            onChange={(value) => {
+            onChange={(value, option) => {
               setPlantId(value);
               if (value) {
                 setPlantError(null);
@@ -173,6 +188,7 @@ export function GrowingTrialFormModal({
                   plants.options.find((option) => option.id === value) ??
                     selectedPlant,
                 );
+                plants.setSearchFromSelection(option.label);
               }
             }}
             onSearchChange={plants.setSearch}
@@ -192,7 +208,7 @@ export function GrowingTrialFormModal({
                 ? "No matching Containers"
                 : "No Containers"
             }
-            onChange={(value) => {
+            onChange={(value, option) => {
               setContainerId(value);
               if (value) {
                 setContainerError(null);
@@ -200,6 +216,7 @@ export function GrowingTrialFormModal({
                   containers.options.find((option) => option.id === value) ??
                     selectedContainer,
                 );
+                containers.setSearchFromSelection(option.label);
               }
             }}
             onSearchChange={containers.setSearch}

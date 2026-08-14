@@ -253,6 +253,28 @@ describe("GrowingTrialsPage", () => {
     expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(2);
   });
 
+  it("does not refresh options or shift the modal when relationships are selected", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+
+    await selectOption("Plant", "Radish");
+    await selectOption("Container", "Pot 1");
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 350)));
+
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(1);
+    expect(listGrowingTrialContainerOptions).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByText("Loading Plant and Container options..."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Plant" })).toHaveValue(
+      "Radish",
+    );
+    expect(screen.getByRole("combobox", { name: "Container" })).toHaveValue(
+      "Pot 1",
+    );
+  });
+
   it("aborts option requests on close and starts a clean session on reopen", async () => {
     const pending = deferred<(typeof radish)[]>();
     jest.mocked(listGrowingTrialPlantOptions).mockReturnValue(pending.promise);

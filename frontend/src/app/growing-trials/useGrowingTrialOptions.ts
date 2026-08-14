@@ -114,8 +114,13 @@ function useOptionResource(opened: boolean, fetchOptions: OptionRequest) {
   return {
     search,
     setSearch,
+    setSearchFromSelection: (value: string) => {
+      previousSearch.current = value;
+      setSearch(value);
+    },
     options,
     isLoading,
+    isInitialLoading: isLoading && !hasLoadedEmptySearch,
     error,
     retry: () => request(search),
     noRecords:
