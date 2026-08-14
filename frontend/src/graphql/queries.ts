@@ -78,3 +78,45 @@ export const EDIT_PLANT_MUTATION = gql`
     }
   }
 `;
+
+export const GROWING_TRIALS_QUERY = gql`
+  query GrowingTrials($limit: Int!, $offset: Int!) {
+    growingTrials(limit: $limit, offset: $offset) {
+      items {
+        id
+        plant {
+          id
+          name
+        }
+        container {
+          id
+          name
+        }
+        status
+        createdAt
+        updatedAt
+      }
+      hasNextPage
+      hasPreviousPage
+    }
+  }
+`;
+
+export const CREATE_GROWING_TRIAL_MUTATION = gql`
+  mutation CreateGrowingTrial($plantId: ID!, $containerId: ID!) {
+    createGrowingTrial(plantId: $plantId, containerId: $containerId) {
+      id
+      plant {
+        id
+        name
+      }
+      container {
+        id
+        name
+      }
+      status
+      createdAt
+      updatedAt
+    }
+  }
+`;
