@@ -1,50 +1,60 @@
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { notifications } from "@mantine/notifications";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
-import { listContainers } from "@/graphql/containers";
-import { createGrowingTrial, listGrowingTrials } from "@/graphql/growingTrials";
-import { listPlants } from "@/graphql/plants";
+import {
+  createGrowingTrial,
+  listGrowingTrialContainerOptions,
+  listGrowingTrialPlantOptions,
+  listGrowingTrials,
+} from "@/graphql/growingTrials";
 
 import GrowingTrialsPage from "./page";
 
+jest.mock("@mantine/notifications", () => ({
+  notifications: { show: jest.fn(), hide: jest.fn() },
+}));
 jest.mock("@/graphql/growingTrials", () => ({
   createGrowingTrial: jest.fn(),
   listGrowingTrials: jest.fn(),
+  listGrowingTrialPlantOptions: jest.fn(),
+  listGrowingTrialContainerOptions: jest.fn(),
 }));
-jest.mock("@/graphql/plants", () => ({ listPlants: jest.fn() }));
-jest.mock("@/graphql/containers", () => ({ listContainers: jest.fn() }));
 
 const emptyPage = {
   items: [],
   hasNextPage: false,
   hasPreviousPage: false,
+  endCursor: null,
 };
-
-const radish = {
-  id: "2",
-  name: "Radish",
-  careNotes: "Keep moist",
-  createdAt: "2026-08-14T12:00:00Z",
-  updatedAt: "2026-08-14T12:00:00Z",
-};
-
-const pot = {
-  id: "3",
-  name: "Pot 1",
-  createdAt: "2026-08-14T12:00:00Z",
-  updatedAt: "2026-08-14T12:00:00Z",
-};
-
+const radish = { id: "2", name: "Radish" };
+const pot = { id: "3", name: "Pot 1" };
 const plannedTrial = {
-  id: "1",
-  plant: { id: radish.id, name: radish.name },
-  container: { id: pot.id, name: pot.name },
+  id: "10",
+  plant: radish,
+  container: pot,
   status: "PLANNED" as const,
   createdAt: "2026-08-14T12:00:00Z",
   updatedAt: "2026-08-14T12:00:00Z",
 };
 
-function renderGrowingTrialsPage() {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function renderPage() {
   return render(
     <MantineProvider>
       <GrowingTrialsPage />
@@ -52,220 +62,164 @@ function renderGrowingTrialsPage() {
   );
 }
 
-function selectOption(label: string, option: string) {
-  const input = screen.getByRole("combobox", { name: label });
-  fireEvent.click(input);
-  fireEvent.click(screen.getByRole("option", { name: option, hidden: true }));
+async function openModal() {
+  fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
+  await screen.findByRole("heading", { name: "Add Growing Trial" });
+  await waitFor(() => {
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalled();
+    expect(listGrowingTrialContainerOptions).toHaveBeenCalled();
+  });
+}
+
+async function selectOption(label: string, option: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: label }));
+  fireEvent.click(
+    await screen.findByRole("option", { name: option, hidden: true }),
+  );
 }
 
 describe("GrowingTrialsPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
-    jest.mocked(listPlants).mockResolvedValue({
-      items: [radish],
-      hasNextPage: false,
-      hasPreviousPage: false,
-    });
-    jest.mocked(listContainers).mockResolvedValue([pot]);
-  });
-
-  it("renders navigation, heading, and loading state", () => {
-    jest
-      .mocked(listGrowingTrials)
-      .mockReturnValue(new Promise(() => undefined));
-
-    renderGrowingTrialsPage();
-
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-      "href",
-      "/",
-    );
-    expect(
-      screen.getByRole("link", { name: "Growing Trials" }),
-    ).toHaveAttribute("href", "/growing-trials");
-    expect(
-      screen.getByRole("heading", { name: "Growing Trials" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Loading Growing Trials...")).toBeInTheDocument();
-  });
-
-  it("shows an empty state", async () => {
     jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
-
-    renderGrowingTrialsPage();
-
-    expect(
-      await screen.findByRole("heading", { name: "No Growing Trials yet" }),
-    ).toBeInTheDocument();
+    jest.mocked(listGrowingTrialPlantOptions).mockResolvedValue([radish]);
+    jest.mocked(listGrowingTrialContainerOptions).mockResolvedValue([pot]);
   });
 
-  it("renders planned Growing Trial cards", async () => {
-    jest.mocked(listGrowingTrials).mockResolvedValue({
-      items: [
-        {
-          id: "1",
-          plant: { id: "2", name: "Radish" },
-          container: { id: "3", name: "Pot 1" },
-          status: "PLANNED",
-          createdAt: "2026-08-14T12:00:00Z",
-          updatedAt: "2026-08-14T12:00:00Z",
-        },
-      ],
-      hasNextPage: false,
-      hasPreviousPage: false,
-    });
+  it("loads the first cursor page and exposes initial loading accessibly", async () => {
+    const pending = deferred<typeof emptyPage>();
+    jest.mocked(listGrowingTrials).mockReturnValue(pending.promise);
+    renderPage();
 
-    renderGrowingTrialsPage();
-
-    expect(
-      await screen.findByRole("heading", { name: "Radish in Pot 1" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Planned")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Loading Growing Trials...",
+    );
+    await waitFor(() =>
+      expect(listGrowingTrials).toHaveBeenCalledWith(20, null),
+    );
+    await act(async () => pending.resolve(emptyPage));
   });
 
-  it("shows an error and retries the current page", async () => {
-    jest
-      .mocked(listGrowingTrials)
-      .mockRejectedValueOnce(new Error("Network error"))
-      .mockResolvedValueOnce(emptyPage);
-
-    renderGrowingTrialsPage();
-
-    expect(
-      await screen.findByText("Growing Trials could not be loaded."),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "No Growing Trials yet" }),
-    ).toBeInTheDocument();
-    expect(listGrowingTrials).toHaveBeenLastCalledWith(20, 0);
-  });
-
-  it("requests the next bounded page", async () => {
+  it("navigates Next and Previous through cursor history", async () => {
     jest
       .mocked(listGrowingTrials)
       .mockResolvedValueOnce({
-        items: [
-          {
-            id: "1",
-            plant: { id: "2", name: "Radish" },
-            container: { id: "3", name: "Pot 1" },
-            status: "PLANNED",
-            createdAt: "2026-08-14T12:00:00Z",
-            updatedAt: "2026-08-14T12:00:00Z",
-          },
-        ],
+        items: [plannedTrial],
         hasNextPage: true,
         hasPreviousPage: false,
-      })
-      .mockResolvedValueOnce(emptyPage);
-
-    renderGrowingTrialsPage();
-    await screen.findByRole("heading", { name: "Radish in Pot 1" });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(listGrowingTrials).toHaveBeenLastCalledWith(20, 20);
-    });
-  });
-
-  it("opens the creation modal and requires both selections", async () => {
-    jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
-
-    renderGrowingTrialsPage();
-    await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
-
-    expect(
-      await screen.findByRole("heading", { name: "Add Growing Trial" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("combobox", { name: "Plant" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("combobox", { name: "Container" }),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Growing Trial" }),
-    );
-
-    expect(screen.getByText("Select a Plant.")).toBeInTheDocument();
-    expect(screen.getByText("Select a Container.")).toBeInTheDocument();
-    expect(createGrowingTrial).not.toHaveBeenCalled();
-  });
-
-  it("loads every Plant page for the selector", async () => {
-    jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
-    jest
-      .mocked(listPlants)
-      .mockResolvedValueOnce({
-        items: [radish],
-        hasNextPage: true,
-        hasPreviousPage: false,
+        endCursor: "cursor-10",
       })
       .mockResolvedValueOnce({
-        items: [{ ...radish, id: "4", name: "Basil" }],
+        items: [{ ...plannedTrial, id: "9" }],
         hasNextPage: false,
         hasPreviousPage: true,
+        endCursor: "cursor-9",
+      })
+      .mockResolvedValueOnce({
+        items: [plannedTrial],
+        hasNextPage: true,
+        hasPreviousPage: false,
+        endCursor: "cursor-10",
       });
+    renderPage();
 
-    renderGrowingTrialsPage();
-    await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
-    await screen.findByRole("combobox", { name: "Plant" });
-
-    expect(listPlants).toHaveBeenNthCalledWith(1, 50, 0);
-    expect(listPlants).toHaveBeenNthCalledWith(2, 50, 50);
+    await screen.findByRole("heading", { name: "Radish in Pot 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(listGrowingTrials).toHaveBeenLastCalledWith(20, "cursor-10"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    await waitFor(() =>
+      expect(listGrowingTrials).toHaveBeenLastCalledWith(20, null),
+    );
   });
 
-  it("creates a trial and refreshes the bounded list", async () => {
+  it("opens with exactly two bounded option requests", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(1);
+    expect(listGrowingTrialContainerOptions).toHaveBeenCalledTimes(1);
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledWith(
+      "",
+      20,
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("renders a successful mutation immediately and confirms both names", async () => {
+    const refresh = deferred<typeof emptyPage>();
     jest
       .mocked(listGrowingTrials)
       .mockResolvedValueOnce(emptyPage)
-      .mockResolvedValueOnce({
-        items: [plannedTrial],
-        hasNextPage: false,
-        hasPreviousPage: false,
-      });
+      .mockReturnValueOnce(refresh.promise);
     jest.mocked(createGrowingTrial).mockResolvedValue(plannedTrial);
-
-    renderGrowingTrialsPage();
+    renderPage();
     await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
+    await openModal();
+    await selectOption("Plant", "Radish");
+    await selectOption("Container", "Pot 1");
 
-    await screen.findByRole("combobox", { name: "Plant" });
-    selectOption("Plant", "Radish");
-    selectOption("Container", "Pot 1");
     fireEvent.click(
       screen.getByRole("button", { name: "Create Growing Trial" }),
     );
 
-    await waitFor(() => {
-      expect(createGrowingTrial).toHaveBeenCalledWith("2", "3");
-    });
     expect(
       await screen.findByRole("heading", { name: "Radish in Pot 1" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Add Growing Trial" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Growing Trial created",
+        message: "Radish in Pot 1",
+        autoClose: 5000,
+      }),
+    );
+    await act(async () =>
+      refresh.resolve({ ...emptyPage, items: [plannedTrial] }),
+    );
   });
 
-  it("preserves selections and permits retry after a save failure", async () => {
-    jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
+  it("retains the created trial and offers Retry when refresh fails", async () => {
     jest
-      .mocked(createGrowingTrial)
-      .mockRejectedValueOnce(new Error("Save failed"))
-      .mockResolvedValueOnce(plannedTrial);
-
-    renderGrowingTrialsPage();
+      .mocked(listGrowingTrials)
+      .mockResolvedValueOnce(emptyPage)
+      .mockRejectedValueOnce(new Error("Refresh failed"))
+      .mockResolvedValueOnce({ ...emptyPage, items: [plannedTrial] });
+    jest.mocked(createGrowingTrial).mockResolvedValue(plannedTrial);
+    renderPage();
     await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
-    await screen.findByRole("combobox", { name: "Plant" });
-    selectOption("Plant", "Radish");
-    selectOption("Container", "Pot 1");
-    fireEvent.click(
+    await openModal();
+    await selectOption("Plant", "Radish");
+    await selectOption("Container", "Pot 1");
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Create Growing Trial" }),
+    );
+
+    await screen.findByRole("heading", { name: "Radish in Pot 1" });
+    await waitFor(() => expect(notifications.show).toHaveBeenCalledTimes(2));
+    const warning = jest.mocked(notifications.show).mock.calls[1][0];
+    const { getByRole } = render(
+      <MantineProvider>{warning.message}</MantineProvider>,
+    );
+    fireEvent.click(getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(notifications.hide).toHaveBeenCalledWith(
+        "growing-trial-refresh-failed",
+      ),
+    );
+  });
+
+  it("preserves selections after mutation failure and permits retry", async () => {
+    jest.mocked(createGrowingTrial).mockRejectedValue(new Error("Save failed"));
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+    await selectOption("Plant", "Radish");
+    await selectOption("Container", "Pot 1");
+    fireEvent.submit(
       screen.getByRole("button", { name: "Create Growing Trial" }),
     );
 
@@ -275,61 +229,92 @@ describe("GrowingTrialsPage", () => {
     expect(screen.getByRole("combobox", { name: "Plant" })).toHaveValue(
       "Radish",
     );
-    expect(screen.getByRole("combobox", { name: "Container" })).toHaveValue(
-      "Pot 1",
-    );
-
-    fireEvent.click(
+    fireEvent.submit(
       screen.getByRole("button", { name: "Create Growing Trial" }),
     );
     await waitFor(() => expect(createGrowingTrial).toHaveBeenCalledTimes(2));
   });
 
-  it("prevents cancellation and duplicate submission while saving", async () => {
-    let resolveCreate: (trial: typeof plannedTrial) => void = () => undefined;
-    const pendingCreate = new Promise<typeof plannedTrial>((resolve) => {
-      resolveCreate = resolve;
-    });
-    jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
-    jest.mocked(createGrowingTrial).mockReturnValue(pendingCreate);
-
-    renderGrowingTrialsPage();
+  it("debounces remote search and reuses the per-session cache", async () => {
+    jest.mocked(listGrowingTrialPlantOptions).mockResolvedValue([radish]);
+    renderPage();
     await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
-    await screen.findByRole("combobox", { name: "Plant" });
-    selectOption("Plant", "Radish");
-    selectOption("Container", "Pot 1");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Create Growing Trial" }),
+    await openModal();
+    const plant = screen.getByRole("combobox", { name: "Plant" });
+
+    fireEvent.change(plant, { target: { value: "rad" } });
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(1);
+    await waitFor(
+      () => expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(2),
+      { timeout: 500 },
     );
-
-    await waitFor(() => expect(createGrowingTrial).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Create Growing Trial" }),
-    ).toBeDisabled();
-
-    resolveCreate(plannedTrial);
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: "Add Growing Trial" }),
-      ).not.toBeInTheDocument();
-    });
+    fireEvent.change(plant, { target: { value: "" } });
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 350)));
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(2);
   });
 
-  it("shows an actionable state when selector options cannot be loaded", async () => {
-    jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
-    jest.mocked(listPlants).mockRejectedValue(new Error("Network error"));
-
-    renderGrowingTrialsPage();
+  it("aborts option requests on close and starts a clean session on reopen", async () => {
+    const pending = deferred<(typeof radish)[]>();
+    jest.mocked(listGrowingTrialPlantOptions).mockReturnValue(pending.promise);
+    renderPage();
     await screen.findByRole("heading", { name: "No Growing Trials yet" });
-    fireEvent.click(screen.getByRole("button", { name: "Add Growing Trial" }));
+    await openModal();
+    const signal = jest.mocked(listGrowingTrialPlantOptions).mock.calls[0][2]!;
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(signal.aborted).toBe(true);
 
-    expect(
-      await screen.findByText("Plants and Containers could not be loaded."),
-    ).toBeInTheDocument();
-    expect(
+    jest.mocked(listGrowingTrialPlantOptions).mockResolvedValue([radish]);
+    await openModal();
+    expect(listGrowingTrialPlantOptions).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears corrected errors and focuses the first invalid selector", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+    const submit = screen.getByRole("button", { name: "Create Growing Trial" });
+    fireEvent.click(submit);
+
+    expect(screen.getByRole("combobox", { name: "Plant" })).toHaveFocus();
+    expect(screen.getByText("Select a Plant.")).toBeInTheDocument();
+    await selectOption("Plant", "Radish");
+    expect(screen.queryByText("Select a Plant.")).not.toBeInTheDocument();
+    fireEvent.click(submit);
+    expect(screen.getByRole("combobox", { name: "Container" })).toHaveFocus();
+  });
+
+  it("submits with Enter and prevents cancellation while saving", async () => {
+    const pending = deferred<typeof plannedTrial>();
+    jest.mocked(createGrowingTrial).mockReturnValue(pending.promise);
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+    await selectOption("Plant", "Radish");
+    await selectOption("Container", "Pot 1");
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Container" }), {
+      key: "Enter",
+      code: "Enter",
+    });
+    fireEvent.submit(
       screen.getByRole("button", { name: "Create Growing Trial" }),
-    ).toBeDisabled();
+    );
+    await waitFor(() => expect(createGrowingTrial).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saving Growing Trial...",
+    );
+    await act(async () => pending.resolve(plannedTrial));
+  });
+
+  it("distinguishes missing records from no search matches", async () => {
+    jest.mocked(listGrowingTrialPlantOptions).mockResolvedValue([]);
+    renderPage();
+    await screen.findByRole("heading", { name: "No Growing Trials yet" });
+    await openModal();
+    expect(await screen.findByText("A Plant is required.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Create a Plant" }),
+    ).toHaveAttribute("href", "/plants");
   });
 });

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import {
   Alert,
+  Anchor,
   Button,
   Group,
   Loader,
@@ -10,54 +11,85 @@ import {
   Text,
 } from "@mantine/core";
 
-import type { GardenContainer } from "@/graphql/containers";
-import type { Plant } from "@/graphql/plants";
+import type { GrowingTrialOption } from "@/graphql/growingTrials";
+
+type OptionResource = {
+  search: string;
+  setSearch: (search: string) => void;
+  options: GrowingTrialOption[];
+  isLoading: boolean;
+  error: boolean;
+  retry: () => Promise<void>;
+  noRecords: boolean;
+};
 
 type GrowingTrialFormModalProps = {
   opened: boolean;
-  plants: Plant[];
-  containers: GardenContainer[];
-  isLoadingOptions: boolean;
-  optionsError: boolean;
+  plants: OptionResource;
+  containers: OptionResource;
   isSaving: boolean;
   saveError: boolean;
   onClose: () => void;
-  onRetryOptions: () => void;
   onSubmit: (plantId: string, containerId: string) => Promise<void>;
 };
+
+function selectorData(
+  options: GrowingTrialOption[],
+  selected: GrowingTrialOption | null,
+) {
+  const values = selected
+    ? [selected, ...options.filter((option) => option.id !== selected.id)]
+    : options;
+  return values.map((option) => ({ value: option.id, label: option.name }));
+}
 
 export function GrowingTrialFormModal({
   opened,
   plants,
   containers,
-  isLoadingOptions,
-  optionsError,
   isSaving,
   saveError,
   onClose,
-  onRetryOptions,
   onSubmit,
 }: GrowingTrialFormModalProps) {
   const [plantId, setPlantId] = useState<string | null>(null);
   const [containerId, setContainerId] = useState<string | null>(null);
+  const [selectedPlant, setSelectedPlant] = useState<GrowingTrialOption | null>(
+    null,
+  );
+  const [selectedContainer, setSelectedContainer] =
+    useState<GrowingTrialOption | null>(null);
   const [plantError, setPlantError] = useState<string | null>(null);
   const [containerError, setContainerError] = useState<string | null>(null);
+  const plantInput = useRef<HTMLInputElement>(null);
+  const containerInput = useRef<HTMLInputElement>(null);
 
-  async function handleSubmit() {
-    setPlantError(plantId ? null : "Select a Plant.");
-    setContainerError(containerId ? null : "Select a Container.");
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextPlantError = plantId ? null : "Select a Plant.";
+    const nextContainerError = containerId ? null : "Select a Container.";
+    setPlantError(nextPlantError);
+    setContainerError(nextContainerError);
 
-    if (!plantId || !containerId) {
+    if (nextPlantError) {
+      plantInput.current?.focus();
+      return;
+    }
+    if (nextContainerError) {
+      containerInput.current?.focus();
       return;
     }
 
-    await onSubmit(plantId, containerId);
+    await onSubmit(plantId!, containerId!);
   }
 
-  const missingRecords =
-    !isLoadingOptions &&
-    !optionsError &&
-    (plants.length === 0 || containers.length === 0);
+  const optionsUnavailable =
+    plants.isLoading ||
+    containers.isLoading ||
+    plants.error ||
+    containers.error ||
+    plants.noRecords ||
+    containers.noRecords;
 
   return (
     <Modal
@@ -66,83 +98,135 @@ export function GrowingTrialFormModal({
       title="Add Growing Trial"
       transitionProps={{ duration: 0 }}
     >
-      <Stack gap="md">
-        {isLoadingOptions ? (
-          <Group gap="sm">
-            <Loader size="sm" />
-            <Text>Loading Plants and Containers...</Text>
-          </Group>
-        ) : null}
+      <form onSubmit={handleSubmit}>
+        <Stack gap="md">
+          {plants.isLoading || containers.isLoading ? (
+            <Group gap="sm" role="status">
+              <Loader size="sm" />
+              <Text>Loading Plant and Container options...</Text>
+            </Group>
+          ) : null}
 
-        {optionsError ? (
-          <Alert color="red" title="Plants and Containers could not be loaded.">
-            <Stack align="flex-start" gap="sm">
-              <Text>Check that the local Gardenerd API is running.</Text>
-              <Button onClick={onRetryOptions} size="xs" variant="light">
-                Try again
+          {plants.error ? (
+            <Alert color="red" title="Plants could not be loaded." role="alert">
+              <Button
+                onClick={() => void plants.retry()}
+                size="xs"
+                type="button"
+                variant="light"
+              >
+                Try Plants again
               </Button>
-            </Stack>
-          </Alert>
-        ) : null}
+            </Alert>
+          ) : null}
+          {containers.error ? (
+            <Alert
+              color="red"
+              title="Containers could not be loaded."
+              role="alert"
+            >
+              <Button
+                onClick={() => void containers.retry()}
+                size="xs"
+                type="button"
+                variant="light"
+              >
+                Try Containers again
+              </Button>
+            </Alert>
+          ) : null}
 
-        {missingRecords ? (
-          <Alert
-            color="yellow"
-            title="Plant and Container records are required."
-          >
-            Create at least one Plant and one Container before planning a
-            Growing Trial.
-          </Alert>
-        ) : null}
+          {plants.noRecords ? (
+            <Alert color="yellow" title="A Plant is required.">
+              <Anchor href="/plants">Create a Plant</Anchor> before planning a
+              Growing Trial.
+            </Alert>
+          ) : null}
+          {containers.noRecords ? (
+            <Alert color="yellow" title="A Container is required.">
+              <Anchor href="/containers">Create a Container</Anchor> before
+              planning a Growing Trial.
+            </Alert>
+          ) : null}
 
-        {saveError ? (
-          <Alert color="red">Growing Trial could not be saved.</Alert>
-        ) : null}
+          {saveError ? (
+            <Alert color="red">Growing Trial could not be saved.</Alert>
+          ) : null}
 
-        {!isLoadingOptions && !optionsError ? (
-          <>
-            <Select
-              data={plants.map((plant) => ({
-                value: plant.id,
-                label: plant.name,
-              }))}
+          <Select
+            data={selectorData(plants.options, selectedPlant)}
+            disabled={isSaving || plants.noRecords}
+            error={plantError}
+            label="Plant"
+            nothingFoundMessage={
+              plants.search.trim() ? "No matching Plants" : "No Plants"
+            }
+            onChange={(value) => {
+              setPlantId(value);
+              if (value) {
+                setPlantError(null);
+                setSelectedPlant(
+                  plants.options.find((option) => option.id === value) ??
+                    selectedPlant,
+                );
+              }
+            }}
+            onSearchChange={plants.setSearch}
+            placeholder="Select a Plant"
+            ref={plantInput}
+            searchable
+            searchValue={plants.search}
+            value={plantId}
+          />
+          <Select
+            data={selectorData(containers.options, selectedContainer)}
+            disabled={isSaving || containers.noRecords}
+            error={containerError}
+            label="Container"
+            nothingFoundMessage={
+              containers.search.trim()
+                ? "No matching Containers"
+                : "No Containers"
+            }
+            onChange={(value) => {
+              setContainerId(value);
+              if (value) {
+                setContainerError(null);
+                setSelectedContainer(
+                  containers.options.find((option) => option.id === value) ??
+                    selectedContainer,
+                );
+              }
+            }}
+            onSearchChange={containers.setSearch}
+            placeholder="Select a Container"
+            ref={containerInput}
+            searchable
+            searchValue={containers.search}
+            value={containerId}
+          />
+
+          {isSaving ? <Text role="status">Saving Growing Trial...</Text> : null}
+
+          <Group justify="flex-end">
+            <Button
               disabled={isSaving}
-              error={plantError}
-              label="Plant"
-              onChange={setPlantId}
-              placeholder="Select a Plant"
-              searchable
-              value={plantId}
-            />
-            <Select
-              data={containers.map((container) => ({
-                value: container.id,
-                label: container.name,
-              }))}
-              disabled={isSaving}
-              error={containerError}
-              label="Container"
-              onChange={setContainerId}
-              placeholder="Select a Container"
-              searchable
-              value={containerId}
-            />
-          </>
-        ) : null}
-
-        <Group justify="flex-end">
-          <Button disabled={isSaving} onClick={onClose} variant="default">
-            Cancel
-          </Button>
-          <Button
-            disabled={isLoadingOptions || optionsError || missingRecords}
-            loading={isSaving}
-            onClick={handleSubmit}
-          >
-            Create Growing Trial
-          </Button>
-        </Group>
-      </Stack>
+              onClick={onClose}
+              type="button"
+              variant="default"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={optionsUnavailable}
+              loading={isSaving}
+              type="submit"
+            >
+              Create Growing Trial
+            </Button>
+          </Group>
+        </Stack>
+      </form>
     </Modal>
   );
 }

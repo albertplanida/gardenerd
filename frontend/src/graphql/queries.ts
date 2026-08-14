@@ -80,8 +80,8 @@ export const EDIT_PLANT_MUTATION = gql`
 `;
 
 export const GROWING_TRIALS_QUERY = gql`
-  query GrowingTrials($limit: Int!, $offset: Int!) {
-    growingTrials(limit: $limit, offset: $offset) {
+  query GrowingTrials($limit: Int!, $after: String) {
+    growingTrials(limit: $limit, after: $after) {
       items {
         id
         plant {
@@ -98,6 +98,25 @@ export const GROWING_TRIALS_QUERY = gql`
       }
       hasNextPage
       hasPreviousPage
+      endCursor
+    }
+  }
+`;
+
+export const GROWING_TRIAL_PLANT_OPTIONS_QUERY = gql`
+  query GrowingTrialPlantOptions($search: String, $limit: Int!) {
+    growingTrialPlantOptions(search: $search, limit: $limit) {
+      id
+      name
+    }
+  }
+`;
+
+export const GROWING_TRIAL_CONTAINER_OPTIONS_QUERY = gql`
+  query GrowingTrialContainerOptions($search: String, $limit: Int!) {
+    growingTrialContainerOptions(search: $search, limit: $limit) {
+      id
+      name
     }
   }
 `;
