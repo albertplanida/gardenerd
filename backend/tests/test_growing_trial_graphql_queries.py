@@ -1,11 +1,18 @@
+import base64
+
 import pytest
 
 from apps.containers.models import Container
 from apps.growing_trials.graphql.GrowingTrial.queries import (
     DEFAULT_GROWING_TRIALS_QUERY_LIMIT,
+    INVALID_GROWING_TRIAL_CURSOR_MESSAGE,
 )
 from apps.growing_trials.models import GrowingTrial
 from apps.plants.models import Plant
+
+
+def _cursor(value: str) -> str:
+    return base64.b64encode(value.encode()).decode()
 
 
 def _post_growing_trials(client, variables=None):
@@ -13,8 +20,8 @@ def _post_growing_trials(client, variables=None):
         '/graphql/',
         data={
             'query': """
-                query GrowingTrials($limit: Int, $offset: Int) {
-                    growingTrials(limit: $limit, offset: $offset) {
+                query GrowingTrials($limit: Int, $after: String) {
+                    growingTrials(limit: $limit, after: $after) {
                         items {
                             id
                             plant { id name }
@@ -25,6 +32,7 @@ def _post_growing_trials(client, variables=None):
                         }
                         hasNextPage
                         hasPreviousPage
+                        endCursor
                     }
                 }
             """,
@@ -34,123 +42,163 @@ def _post_growing_trials(client, variables=None):
     )
 
 
-@pytest.mark.django_db
-def test_growing_trials_query_returns_empty_page(client):
-    response = _post_growing_trials(client)
+def _create_trials(count):
+    plant = Plant.objects.create(name='Radish')
+    return [
+        GrowingTrial.objects.create_planned(
+            plant=plant,
+            container=Container.objects.create(name=f'Pot {index}'),
+        )
+        for index in range(count)
+    ]
 
-    assert response.status_code == 200
-    assert response.json()['data']['growingTrials'] == {
+
+@pytest.mark.django_db
+def test_growing_trials_query_returns_empty_first_page(client):
+    page = _post_growing_trials(client).json()['data']['growingTrials']
+
+    assert page == {
         'items': [],
         'hasNextPage': False,
         'hasPreviousPage': False,
+        'endCursor': None,
     }
 
 
 @pytest.mark.django_db
-def test_growing_trials_query_returns_relationships_and_status_in_id_order(client):
-    plant = Plant.objects.create(name='Radish')
-    first_container = Container.objects.create(name='Pot 1')
-    second_container = Container.objects.create(name='Pot 2')
-    first = GrowingTrial.objects.create(plant=plant, container=first_container)
-    second = GrowingTrial.objects.create(plant=plant, container=second_container)
+def test_growing_trials_query_returns_newest_first_with_relationships(client):
+    first, second = _create_trials(2)
 
-    response = _post_growing_trials(client)
+    page = _post_growing_trials(client).json()['data']['growingTrials']
 
-    assert response.status_code == 200
-    assert response.json()['data']['growingTrials'] == {
-        'items': [
-            {
-                'id': str(first.id),
-                'plant': {'id': str(plant.id), 'name': 'Radish'},
-                'container': {'id': str(first_container.id), 'name': 'Pot 1'},
-                'status': 'PLANNED',
-                'createdAt': first.created_at.isoformat(),
-                'updatedAt': first.updated_at.isoformat(),
-            },
-            {
-                'id': str(second.id),
-                'plant': {'id': str(plant.id), 'name': 'Radish'},
-                'container': {'id': str(second_container.id), 'name': 'Pot 2'},
-                'status': 'PLANNED',
-                'createdAt': second.created_at.isoformat(),
-                'updatedAt': second.updated_at.isoformat(),
-            },
-        ],
-        'hasNextPage': False,
-        'hasPreviousPage': False,
+    assert [item['id'] for item in page['items']] == [str(second.id), str(first.id)]
+    assert page['items'][0] == {
+        'id': str(second.id),
+        'plant': {'id': str(second.plant.id), 'name': 'Radish'},
+        'container': {'id': str(second.container.id), 'name': 'Pot 1'},
+        'status': 'PLANNED',
+        'createdAt': second.created_at.isoformat(),
+        'updatedAt': second.updated_at.isoformat(),
     }
+    assert page['endCursor'] == _cursor(f'growing-trial:v1:{first.id}')
 
 
 @pytest.mark.django_db
-def test_growing_trials_query_default_page_is_bounded(client):
-    plant = Plant.objects.create(name='Radish')
-    trials = [
-        GrowingTrial.objects.create(
-            plant=plant,
-            container=Container.objects.create(name=f'Pot {index}'),
-        )
-        for index in range(DEFAULT_GROWING_TRIALS_QUERY_LIMIT + 1)
-    ]
+def test_growing_trials_query_returns_complete_first_page(client):
+    trials = _create_trials(DEFAULT_GROWING_TRIALS_QUERY_LIMIT + 1)
 
-    response = _post_growing_trials(client)
-    page = response.json()['data']['growingTrials']
+    page = _post_growing_trials(client).json()['data']['growingTrials']
 
-    assert response.status_code == 200
+    expected = list(reversed(trials))[:DEFAULT_GROWING_TRIALS_QUERY_LIMIT]
     assert [item['id'] for item in page['items']] == [
-        str(trial.id) for trial in trials[:DEFAULT_GROWING_TRIALS_QUERY_LIMIT]
+        str(trial.id) for trial in expected
     ]
     assert page['hasNextPage'] is True
     assert page['hasPreviousPage'] is False
+    assert page['endCursor'] == _cursor(f'growing-trial:v1:{expected[-1].id}')
 
 
 @pytest.mark.django_db
-def test_growing_trials_query_returns_requested_page_metadata(client):
-    plant = Plant.objects.create(name='Radish')
-    trials = [
-        GrowingTrial.objects.create(
-            plant=plant,
-            container=Container.objects.create(name=f'Pot {index}'),
-        )
-        for index in range(5)
-    ]
+def test_growing_trials_query_returns_middle_and_final_pages(client):
+    trials = _create_trials(5)
 
-    response = _post_growing_trials(client, {'limit': 2, 'offset': 2})
-    page = response.json()['data']['growingTrials']
+    middle = _post_growing_trials(
+        client, {'limit': 2, 'after': _cursor(f'growing-trial:v1:{trials[3].id}')}
+    ).json()['data']['growingTrials']
+    final = _post_growing_trials(
+        client, {'limit': 2, 'after': middle['endCursor']}
+    ).json()['data']['growingTrials']
 
-    assert [item['id'] for item in page['items']] == [
+    assert [item['id'] for item in middle['items']] == [
         str(trials[2].id),
-        str(trials[3].id),
+        str(trials[1].id),
     ]
-    assert page['hasNextPage'] is True
-    assert page['hasPreviousPage'] is True
+    assert middle['hasNextPage'] is True
+    assert middle['hasPreviousPage'] is True
+    assert [item['id'] for item in final['items']] == [str(trials[0].id)]
+    assert final['hasNextPage'] is False
+    assert final['hasPreviousPage'] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('limit', [1, 50])
+def test_growing_trials_query_accepts_supported_limit_boundaries(client, limit):
+    _create_trials(2)
+
+    body = _post_growing_trials(client, {'limit': limit}).json()
+
+    assert 'errors' not in body
+    assert len(body['data']['growingTrials']['items']) == min(limit, 2)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('limit', [0, 51])
+def test_growing_trials_query_rejects_invalid_limits(client, limit):
+    body = _post_growing_trials(client, {'limit': limit}).json()
+
+    assert body['data'] is None
+    assert body['errors'][0]['message'] == (
+        'Growing Trial query limit must be between 1 and 50'
+    )
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ('variables', 'message'),
+    'after',
     [
-        (
-            {'limit': 0, 'offset': 0},
-            'Growing Trial query limit must be between 1 and 50',
-        ),
-        (
-            {'limit': 51, 'offset': 0},
-            'Growing Trial query limit must be between 1 and 50',
-        ),
-        (
-            {'limit': 20, 'offset': -1},
-            'Growing Trial query offset must be 0 or greater',
-        ),
+        'not base64!',
+        _cursor('other:v1:1'),
+        _cursor('growing-trial:v1:not-an-id'),
+        _cursor('growing-trial:v1:0'),
+        _cursor('growing-trial:v1:-1'),
     ],
 )
-def test_growing_trials_query_rejects_invalid_pagination(
-    client,
-    variables,
-    message,
+def test_growing_trials_query_rejects_malformed_cursors(client, after):
+    body = _post_growing_trials(client, {'after': after}).json()
+
+    assert body['data'] is None
+    assert body['errors'][0]['message'] == INVALID_GROWING_TRIAL_CURSOR_MESSAGE
+
+
+@pytest.mark.django_db
+def test_growing_trials_continuation_is_stable_after_an_insert(client):
+    trials = _create_trials(4)
+    first_page = _post_growing_trials(client, {'limit': 2}).json()['data'][
+        'growingTrials'
+    ]
+    GrowingTrial.objects.create_planned(
+        plant=trials[0].plant,
+        container=Container.objects.create(name='New pot'),
+    )
+
+    second_page = _post_growing_trials(
+        client, {'limit': 2, 'after': first_page['endCursor']}
+    ).json()['data']['growingTrials']
+
+    assert [item['id'] for item in second_page['items']] == [
+        str(trials[1].id),
+        str(trials[0].id),
+    ]
+
+
+@pytest.mark.django_db
+def test_growing_trials_query_eager_loads_relationships(
+    client, django_assert_num_queries
 ):
-    response = _post_growing_trials(client, variables)
-    body = response.json()
+    _create_trials(20)
+
+    with django_assert_num_queries(1):
+        response = _post_growing_trials(client)
 
     assert response.status_code == 200
-    assert body['data'] is None
-    assert body['errors'][0]['message'] == message
+
+
+@pytest.mark.django_db
+def test_growing_trials_schema_no_longer_accepts_offset(client):
+    response = client.post(
+        '/graphql/',
+        data={'query': '{ growingTrials(offset: 1) { items { id } } }'},
+        content_type='application/json',
+    )
+
+    assert 'Unknown argument' in response.json()['errors'][0]['message']
