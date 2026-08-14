@@ -2,6 +2,7 @@ import strawberry
 
 from apps.containers.graphql.Container.mutations import ContainerMutations
 from apps.containers.graphql.Container.queries import ContainerQueries
+from apps.growing_trials.graphql.GrowingTrial.mutations import GrowingTrialMutations
 from apps.growing_trials.graphql.GrowingTrial.queries import GrowingTrialQueries
 from apps.plants.graphql.Plant.mutations import PlantMutations
 from apps.plants.graphql.Plant.queries import PlantQueries
@@ -15,7 +16,7 @@ class Query(ContainerQueries, GrowingTrialQueries, PlantQueries):
 
 
 @strawberry.type
-class Mutation(ContainerMutations, PlantMutations):
+class Mutation(ContainerMutations, GrowingTrialMutations, PlantMutations):
     pass
 
 
