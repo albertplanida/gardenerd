@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Container, Group, Stack, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 
@@ -17,9 +17,11 @@ const refreshNotificationId = "growing-trial-refresh-failed";
 export default function GrowingTrialsPage() {
   const trials = useGrowingTrials();
   const [modalOpened, setModalOpened] = useState(false);
+  const [modalSession, setModalSession] = useState(0);
   const options = useGrowingTrialOptions(modalOpened);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const addButton = useRef<HTMLButtonElement>(null);
 
   function closeCreateModal() {
     if (!isSaving) {
@@ -83,8 +85,10 @@ export default function GrowingTrialsPage() {
             </Text>
           </div>
           <Button
+            ref={addButton}
             onClick={() => {
               setSaveError(false);
+              setModalSession((current) => current + 1);
               setModalOpened(true);
             }}
           >
@@ -103,17 +107,17 @@ export default function GrowingTrialsPage() {
         />
       </Stack>
 
-      {modalOpened ? (
-        <GrowingTrialFormModal
-          containers={options.containers}
-          isSaving={isSaving}
-          onClose={closeCreateModal}
-          onSubmit={handleCreate}
-          opened
-          plants={options.plants}
-          saveError={saveError}
-        />
-      ) : null}
+      <GrowingTrialFormModal
+        key={modalSession}
+        containers={options.containers}
+        isSaving={isSaving}
+        onClose={closeCreateModal}
+        onClosed={() => addButton.current?.focus()}
+        onSubmit={handleCreate}
+        opened={modalOpened}
+        plants={options.plants}
+        saveError={saveError}
+      />
     </Container>
   );
 }

@@ -30,6 +30,7 @@ type GrowingTrialFormModalProps = {
   isSaving: boolean;
   saveError: boolean;
   onClose: () => void;
+  onClosed: () => void;
   onSubmit: (plantId: string, containerId: string) => Promise<void>;
 };
 
@@ -50,6 +51,7 @@ export function GrowingTrialFormModal({
   isSaving,
   saveError,
   onClose,
+  onClosed,
   onSubmit,
 }: GrowingTrialFormModalProps) {
   const [plantId, setPlantId] = useState<string | null>(null);
@@ -95,6 +97,8 @@ export function GrowingTrialFormModal({
     <Modal
       opened={opened}
       onClose={onClose}
+      onExitTransitionEnd={onClosed}
+      returnFocus
       title="Add Growing Trial"
       transitionProps={{ duration: 0 }}
     >
