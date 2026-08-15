@@ -6,6 +6,14 @@ from apps.plants.models import Plant
 
 class GrowingTrialStatus(models.TextChoices):
     PLANNED = 'planned', 'Planned'
+    ACTIVE = 'active', 'Active'
+    COMPLETED = 'completed', 'Completed'
+    ABANDONED = 'abandoned', 'Abandoned'
+
+
+class GrowingTrialStartMethod(models.TextChoices):
+    SEED = 'seed', 'Seed'
+    SEEDLING_TRANSPLANT = 'seedling_transplant', 'Seedling/transplant'
 
 
 class GrowingTrialManager(models.Manager):
@@ -35,6 +43,13 @@ class GrowingTrial(models.Model):
         choices=GrowingTrialStatus,
         default=GrowingTrialStatus.PLANNED,
     )
+    start_date = models.DateField(null=True, blank=True)
+    start_method = models.CharField(
+        max_length=20,
+        choices=GrowingTrialStartMethod,
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     objects = GrowingTrialManager()
@@ -44,6 +59,39 @@ class GrowingTrial(models.Model):
             models.CheckConstraint(
                 condition=models.Q(status__in=GrowingTrialStatus.values),
                 name='growing_trial_valid_status',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(start_date__isnull=True, start_method__isnull=True)
+                    | models.Q(start_date__isnull=False, start_method__isnull=False)
+                ),
+                name='growing_trial_start_fields_together',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GrowingTrialStatus.PLANNED)
+                    | models.Q(start_date__isnull=True, start_method__isnull=True)
+                ),
+                name='growing_trial_planned_without_start',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status=GrowingTrialStatus.ACTIVE)
+                    | models.Q(start_date__isnull=False, start_method__isnull=False)
+                ),
+                name='growing_trial_active_has_start',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(start_method__isnull=True)
+                    | models.Q(start_method__in=GrowingTrialStartMethod.values)
+                ),
+                name='growing_trial_valid_start_method',
+            ),
+            models.UniqueConstraint(
+                fields=['container'],
+                condition=models.Q(status=GrowingTrialStatus.ACTIVE),
+                name='one_active_growing_trial_per_container',
             ),
         ]
 

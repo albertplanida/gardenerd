@@ -4,7 +4,11 @@ from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 
 from apps.containers.models import Container
-from apps.growing_trials.models import GrowingTrial, GrowingTrialStatus
+from apps.growing_trials.models import (
+    GrowingTrial,
+    GrowingTrialStartMethod,
+    GrowingTrialStatus,
+)
 from apps.plants.models import Plant
 
 
@@ -125,3 +129,86 @@ def test_database_rejects_invalid_status_from_queryset_update(plant, container):
 
     trial.refresh_from_db()
     assert trial.status == GrowingTrialStatus.PLANNED
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('changes', 'constraint_name'),
+    [
+        (
+            {
+                'status': GrowingTrialStatus.COMPLETED,
+                'start_date': '2026-08-14',
+            },
+            'growing_trial_start_fields_together',
+        ),
+        (
+            {
+                'status': GrowingTrialStatus.PLANNED,
+                'start_date': '2026-08-14',
+                'start_method': GrowingTrialStartMethod.SEED,
+            },
+            'growing_trial_planned_without_start',
+        ),
+        (
+            {'status': GrowingTrialStatus.ACTIVE},
+            'growing_trial_active_has_start',
+        ),
+        (
+            {
+                'status': GrowingTrialStatus.COMPLETED,
+                'start_date': '2026-08-14',
+                'start_method': 'cutting',
+            },
+            'growing_trial_valid_start_method',
+        ),
+    ],
+)
+def test_database_rejects_invalid_start_states(
+    plant,
+    container,
+    changes,
+    constraint_name,
+):
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
+
+    with pytest.raises(IntegrityError) as error, transaction.atomic():
+        GrowingTrial.objects.filter(pk=trial.pk).update(**changes)
+
+    assert constraint_name in str(error.value)
+
+
+@pytest.mark.django_db
+def test_database_allows_completed_and_abandoned_trials_without_start_fields(
+    plant,
+    container,
+):
+    completed = GrowingTrial.objects.create_planned(plant=plant, container=container)
+    abandoned = GrowingTrial.objects.create_planned(plant=plant, container=container)
+
+    GrowingTrial.objects.filter(pk=completed.pk).update(
+        status=GrowingTrialStatus.COMPLETED
+    )
+    GrowingTrial.objects.filter(pk=abandoned.pk).update(
+        status=GrowingTrialStatus.ABANDONED
+    )
+
+    assert GrowingTrial.objects.filter(start_date=None, start_method=None).count() == 2
+
+
+@pytest.mark.django_db
+def test_database_rejects_two_active_trials_for_one_container(plant, container):
+    first = GrowingTrial.objects.create_planned(plant=plant, container=container)
+    second = GrowingTrial.objects.create_planned(plant=plant, container=container)
+    active_values = {
+        'status': GrowingTrialStatus.ACTIVE,
+        'start_date': '2026-08-14',
+        'start_method': GrowingTrialStartMethod.SEED,
+    }
+    GrowingTrial.objects.filter(pk=first.pk).update(**active_values)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        GrowingTrial.objects.filter(pk=second.pk).update(**active_values)
+
+    second.refresh_from_db()
+    assert second.status == GrowingTrialStatus.PLANNED
