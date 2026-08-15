@@ -83,6 +83,13 @@ class GrowingTrial(models.Model):
             ),
             models.CheckConstraint(
                 condition=(
+                    ~models.Q(status=GrowingTrialStatus.COMPLETED)
+                    | models.Q(start_date__isnull=False, start_method__isnull=False)
+                ),
+                name='growing_trial_completed_has_start',
+            ),
+            models.CheckConstraint(
+                condition=(
                     models.Q(start_method__isnull=True)
                     | models.Q(start_method__in=GrowingTrialStartMethod.values)
                 ),

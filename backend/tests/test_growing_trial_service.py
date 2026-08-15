@@ -1,3 +1,4 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from threading import Barrier
@@ -43,6 +44,19 @@ def _start(trial, **overrides):
     return start_growing_trial(**values)
 
 
+def _require_postgresql():
+    if connection.vendor == 'postgresql':
+        return
+    if os.environ.get('REQUIRE_POSTGRES') == '1':
+        pytest.fail(f'PostgreSQL required, connected to {connection.vendor}')
+    pytest.skip('PostgreSQL row-lock behavior only')
+
+
+def test_required_database_vendor():
+    if os.environ.get('REQUIRE_POSTGRES') == '1':
+        assert connection.vendor == 'postgresql'
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize('start_method', GrowingTrialStartMethod.values)
 @pytest.mark.parametrize('days_ago', [0, 30, 3650])
@@ -78,6 +92,52 @@ def test_start_growing_trial_uses_browser_local_date_at_utc_boundary(
     )
 
     assert result.start_date == date(2026, 8, 14)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('utc_now', 'time_zone', 'accepted_date', 'future_date'),
+    [
+        (
+            datetime(2026, 3, 8, 7, 30, tzinfo=UTC),
+            'America/Los_Angeles',
+            date(2026, 3, 7),
+            date(2026, 3, 8),
+        ),
+        (
+            datetime(2026, 10, 31, 14, 30, tzinfo=UTC),
+            'Pacific/Kiritimati',
+            date(2026, 11, 1),
+            date(2026, 11, 2),
+        ),
+    ],
+)
+def test_start_date_validation_is_deterministic_at_timezone_boundaries(
+    trial, monkeypatch, utc_now, time_zone, accepted_date, future_date
+):
+    monkeypatch.setattr('apps.growing_trials.services.timezone.now', lambda: utc_now)
+
+    with pytest.raises(GrowingTrialTransitionError) as error:
+        _start(trial, start_date=future_date, time_zone=time_zone)
+    assert error.value.code == START_DATE_IN_FUTURE
+
+    result = _start(trial, start_date=accepted_date, time_zone=time_zone)
+    assert result.start_date == accepted_date
+
+
+@pytest.mark.django_db
+def test_start_growing_trial_advances_updated_at(trial, monkeypatch):
+    original_updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+    transition_time = datetime(2026, 8, 14, 12, tzinfo=UTC)
+    GrowingTrial.objects.filter(pk=trial.pk).update(updated_at=original_updated_at)
+    monkeypatch.setattr(
+        'apps.growing_trials.services.timezone.now', lambda: transition_time
+    )
+
+    result = _start(trial, start_date=transition_time.date())
+
+    assert result.updated_at == transition_time
+    assert result.updated_at > original_updated_at
 
 
 @pytest.mark.django_db
@@ -133,10 +193,14 @@ def test_start_growing_trial_rejects_non_planned_lifecycle_without_changes(
 ):
     original = {
         'status': status,
-        'start_date': date(2026, 1, 1) if status == GrowingTrialStatus.ACTIVE else None,
+        'start_date': (
+            date(2026, 1, 1)
+            if status in [GrowingTrialStatus.ACTIVE, GrowingTrialStatus.COMPLETED]
+            else None
+        ),
         'start_method': (
             GrowingTrialStartMethod.SEED
-            if status == GrowingTrialStatus.ACTIVE
+            if status in [GrowingTrialStatus.ACTIVE, GrowingTrialStatus.COMPLETED]
             else None
         ),
     }
@@ -217,8 +281,7 @@ def test_unrelated_integrity_error_is_not_hidden(trial, monkeypatch):
 
 @pytest.mark.django_db(transaction=True)
 def test_postgresql_concurrent_starts_leave_exactly_one_active_trial():
-    if connection.vendor != 'postgresql':
-        pytest.skip('PostgreSQL row-lock behavior only')
+    _require_postgresql()
 
     plant = Plant.objects.create(name='Radish')
     container = Container.objects.create(name='Pot 1')
@@ -249,3 +312,46 @@ def test_postgresql_concurrent_starts_leave_exactly_one_active_trial():
 
     assert sorted(results) == [CONTAINER_OCCUPIED, 'started']
     assert GrowingTrial.objects.filter(status=GrowingTrialStatus.ACTIVE).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_postgresql_concurrent_starts_of_same_trial_persist_one_winner():
+    _require_postgresql()
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+    barrier = Barrier(2)
+    attempts = [
+        (date.today() - timedelta(days=1), GrowingTrialStartMethod.SEED),
+        (date.today(), GrowingTrialStartMethod.SEEDLING_TRANSPLANT),
+    ]
+
+    def start(attempt):
+        connections.close_all()
+        barrier.wait()
+        try:
+            result = start_growing_trial(
+                trial_id=trial.pk,
+                start_date=attempt[0],
+                start_method=attempt[1],
+                time_zone='UTC',
+            )
+            return ('started', result.start_date, result.start_method)
+        except GrowingTrialTransitionError as error:
+            return (error.code, None, None)
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(start, attempts))
+
+    assert sorted(result[0] for result in results) == [
+        GROWING_TRIAL_NOT_PLANNED,
+        'started',
+    ]
+    winning_result = next(result for result in results if result[0] == 'started')
+    trial.refresh_from_db()
+    assert trial.status == GrowingTrialStatus.ACTIVE
+    assert (trial.start_date, trial.start_method) == winning_result[1:]
+    assert GrowingTrial.objects.filter(pk=trial.pk).count() == 1

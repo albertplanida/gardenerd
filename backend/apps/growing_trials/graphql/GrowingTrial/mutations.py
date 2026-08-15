@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import strawberry
 from django.core.exceptions import ValidationError
@@ -18,6 +19,7 @@ from apps.plants.models import Plant
 
 PLANT_NOT_FOUND_MESSAGE = 'Plant not found'
 CONTAINER_NOT_FOUND_MESSAGE = 'Container not found'
+logger = logging.getLogger(__name__)
 
 
 def _get_plant(plant_id: strawberry.ID) -> Plant:
@@ -65,6 +67,7 @@ class GrowingTrialMutations:
         except GrowingTrialTransitionError as exc:
             raise GraphQLError(str(exc), extensions={'code': exc.code}) from exc
         except Exception as exc:
+            logger.exception('Unexpected error while starting Growing Trial %s', id)
             raise GraphQLError(
                 'Internal server error.',
                 extensions={'code': 'INTERNAL_ERROR'},

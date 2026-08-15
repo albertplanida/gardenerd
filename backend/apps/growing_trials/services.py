@@ -70,6 +70,8 @@ def start_growing_trial(
     try:
         with transaction.atomic():
             try:
+                # All lifecycle services lock GrowingTrial first, then Container.
+                # Keep this order for future complete/abandon operations.
                 trial = GrowingTrial.objects.select_for_update().get(pk=trial_id)
             except (
                 GrowingTrial.DoesNotExist,

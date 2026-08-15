@@ -285,7 +285,9 @@ def test_start_growing_trial_rejects_malformed_graphql_inputs(
 
 
 @pytest.mark.django_db
-def test_start_growing_trial_masks_unexpected_errors(client, monkeypatch):
+def test_start_growing_trial_logs_and_masks_unexpected_errors(
+    client, monkeypatch, caplog
+):
     trial = GrowingTrial.objects.create_planned(
         plant=Plant.objects.create(name='Radish'),
         container=Container.objects.create(name='Pot 1'),
@@ -295,8 +297,10 @@ def test_start_growing_trial_masks_unexpected_errors(client, monkeypatch):
         lambda **kwargs: (_ for _ in ()).throw(RuntimeError('database secret')),
     )
 
-    error = _post_start_growing_trial(client, trial.pk).json()['errors'][0]
+    response = _post_start_growing_trial(client, trial.pk)
+    error = response.json()['errors'][0]
 
     assert error['message'] == 'Internal server error.'
     assert error['extensions']['code'] == 'INTERNAL_ERROR'
-    assert 'database secret' not in str(error)
+    assert 'database secret' not in response.content.decode()
+    assert 'database secret' in caplog.text
