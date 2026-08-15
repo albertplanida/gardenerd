@@ -1,9 +1,19 @@
+import datetime
+
 import strawberry
 from django.core.exceptions import ValidationError
+from graphql import GraphQLError
 
 from apps.containers.models import Container
-from apps.growing_trials.graphql.GrowingTrial.types import GrowingTrialType
+from apps.growing_trials.graphql.GrowingTrial.types import (
+    GrowingTrialStartMethod,
+    GrowingTrialType,
+)
 from apps.growing_trials.models import GrowingTrial
+from apps.growing_trials.services import (
+    GrowingTrialTransitionError,
+    start_growing_trial,
+)
 from apps.plants.models import Plant
 
 PLANT_NOT_FOUND_MESSAGE = 'Plant not found'
@@ -36,3 +46,26 @@ class GrowingTrialMutations:
             plant=_get_plant(plant_id),
             container=_get_container(container_id),
         )
+
+    @strawberry.mutation
+    def start_growing_trial(
+        self,
+        id: strawberry.ID,
+        start_date: datetime.date,
+        start_method: GrowingTrialStartMethod,
+        time_zone: str,
+    ) -> GrowingTrialType:
+        try:
+            return start_growing_trial(
+                trial_id=id,
+                start_date=start_date,
+                start_method=start_method.value,
+                time_zone=time_zone,
+            )
+        except GrowingTrialTransitionError as exc:
+            raise GraphQLError(str(exc), extensions={'code': exc.code}) from exc
+        except Exception as exc:
+            raise GraphQLError(
+                'Internal server error.',
+                extensions={'code': 'INTERNAL_ERROR'},
+            ) from exc
