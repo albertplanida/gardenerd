@@ -69,6 +69,7 @@ async function mockGrowingTrialGraphql(
   const trials = [...initialTrials].sort((a, b) => Number(b.id) - Number(a.id));
   const createRequests: Record<string, string | number | null>[] = [];
   const startRequests: Record<string, string | number | null>[] = [];
+  const listRequests: Record<string, string | number | null>[] = [];
   const unexpected: string[] = [];
   unknownOperations.set(page, unexpected);
   let remainingQueryFailures = queryFailures;
@@ -90,6 +91,7 @@ async function mockGrowingTrialGraphql(
     const variables = body.variables ?? {};
 
     if (operationName === "GrowingTrials") {
+      listRequests.push(variables);
       const shouldFailInitial = remainingQueryFailures > 0;
       const shouldFailRefresh = hasCreated && remainingRefreshFailures > 0;
       if (shouldFailInitial || shouldFailRefresh) {
@@ -192,6 +194,16 @@ async function mockGrowingTrialGraphql(
       startRequests.push(variables);
       const errorCode = startErrors.shift();
       if (errorCode) {
+        const trialIndex = trials.findIndex((item) => item.id === variables.id);
+        if (errorCode === "GROWING_TRIAL_NOT_FOUND" && trialIndex >= 0) {
+          trials.splice(trialIndex, 1);
+        }
+        if (errorCode === "GROWING_TRIAL_NOT_PLANNED" && trialIndex >= 0) {
+          trials[trialIndex].status = "ACTIVE";
+          trials[trialIndex].startDate = String(variables.startDate);
+          trials[trialIndex].startMethod = variables.startMethod as
+            "SEED" | "SEEDLING_TRANSPLANT";
+        }
         await route.fulfill({
           contentType: "application/json",
           json: {
@@ -224,7 +236,7 @@ async function mockGrowingTrialGraphql(
     });
   });
 
-  return { createRequests, startRequests };
+  return { createRequests, listRequests, startRequests };
 }
 
 async function chooseTrialRelationships(page: Page) {
@@ -312,15 +324,11 @@ test("keeps a successful creation when refresh fails and retries", async ({
     page.getByRole("heading", { name: "Radish in Pot 1" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Growing Trial created, but the list could not be refreshed.",
-    ),
+    page.getByText("The Growing Trial list could not be refreshed."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(
-    page.getByText(
-      "Growing Trial created, but the list could not be refreshed.",
-    ),
+    page.getByText("The Growing Trial list could not be refreshed."),
   ).not.toBeVisible();
 });
 
@@ -395,7 +403,7 @@ test("starts a planned trial in place with exact mutation variables", async ({
     initialTrials: [makeTrial("7")],
   });
   await page.goto("/growing-trials");
-  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Start Radish in Pot 1" }).click();
   const date = page.getByLabel("Start date");
   const startDate = await date.inputValue();
   expect(await date.getAttribute("max")).toBe(startDate);
@@ -406,8 +414,12 @@ test("starts a planned trial in place with exact mutation variables", async ({
   await expect(
     page.getByText("Start method: Seedling/transplant"),
   ).toBeVisible();
-  await expect(page.getByText(`Start date: ${startDate}`)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start" })).toHaveCount(0);
+  await expect(page.locator(`time[datetime="${startDate}"]`)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start Radish in Pot 1" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Growing Trial started")).toBeVisible();
+  await expect(page.locator("#growing-trial-7")).toBeFocused();
   expect(startRequests).toEqual([
     {
       id: "7",
@@ -420,45 +432,63 @@ test("starts a planned trial in place with exact mutation variables", async ({
   ]);
 });
 
-test("shows an occupied Container conflict and retries with preserved values", async ({
+test("closes, refreshes, and notifies for an occupied Container conflict", async ({
   page,
 }) => {
-  const { startRequests } = await mockGrowingTrialGraphql(page, {
+  const { listRequests, startRequests } = await mockGrowingTrialGraphql(page, {
     initialTrials: [makeTrial("7")],
     startErrors: ["CONTAINER_OCCUPIED"],
   });
   await page.goto("/growing-trials");
-  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Start Radish in Pot 1" }).click();
   await page.getByRole("combobox", { name: "Start method" }).click();
   await page.getByRole("option", { name: "Seed", exact: true }).click();
   await page.getByRole("button", { name: "Start Growing Trial" }).click();
   await expect(
-    page.getByText("This Container already has an active Growing Trial."),
+    page.getByText(
+      "This Container now has an active Growing Trial. Refreshing the list.",
+    ),
   ).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Start method" }),
-  ).toHaveValue("Seed");
-  await page.getByRole("button", { name: "Start Growing Trial" }).click();
-  await expect(page.getByText("Start method: Seed")).toBeVisible();
-  expect(startRequests).toHaveLength(2);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect.poll(() => listRequests.length).toBe(2);
+  expect(startRequests).toHaveLength(1);
 });
 
-test("shows a stale lifecycle conflict without changing the planned card", async ({
-  page,
-}) => {
+test("refreshes a card after a stale lifecycle conflict", async ({ page }) => {
   await mockGrowingTrialGraphql(page, {
     initialTrials: [makeTrial("7")],
     startErrors: ["GROWING_TRIAL_NOT_PLANNED"],
   });
   await page.goto("/growing-trials");
-  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("button", { name: "Start Radish in Pot 1" }).click();
   await page.getByRole("combobox", { name: "Start method" }).click();
   await page.getByRole("option", { name: "Seed", exact: true }).click();
   await page.getByRole("button", { name: "Start Growing Trial" }).click();
   await expect(
-    page.getByText("Only planned Growing Trials can be started."),
+    page.getByText(
+      "This Growing Trial is no longer planned, so it cannot be started again. Refreshing the list.",
+    ),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start", exact: true }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Start Radish in Pot 1" }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Active")).toBeVisible();
+});
+
+test("keeps the planned card within the mobile viewport with a touch-friendly action", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chrome");
+  await mockGrowingTrialGraphql(page, { initialTrials: [makeTrial("7")] });
+  await page.goto("/growing-trials");
+
+  const start = page.getByRole("button", { name: "Start Radish in Pot 1" });
+  await expect(start).toBeVisible();
+  const box = await start.boundingBox();
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
 });

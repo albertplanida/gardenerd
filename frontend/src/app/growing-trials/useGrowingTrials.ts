@@ -9,6 +9,7 @@ import {
 const pageSize = 20;
 
 type ListStatus = "loading" | "ready" | "error";
+export type ListRequestOutcome = "applied" | "superseded" | "failed";
 
 export function useGrowingTrials() {
   const [page, setPage] = useState<GrowingTrialPage>({
@@ -34,22 +35,22 @@ export function useGrowingTrials() {
     try {
       const result = await listGrowingTrials(pageSize, cursor);
       if (sequence !== requestSequence.current) {
-        return false;
+        return "superseded" as const;
       }
       setPage(result);
       setStatus("ready");
       setRefreshFailed(false);
-      return true;
+      return "applied" as const;
     } catch {
       if (sequence !== requestSequence.current) {
-        return false;
+        return "superseded" as const;
       }
       if (mode === "refresh") {
         setRefreshFailed(true);
       } else {
         setStatus("error");
       }
-      return false;
+      return "failed" as const;
     }
   }
 
@@ -67,7 +68,7 @@ export function useGrowingTrials() {
   async function next() {
     if (!page.endCursor || !page.hasNextPage) return;
     const nextCursor = page.endCursor;
-    if (await requestPage(nextCursor, "visible")) {
+    if ((await requestPage(nextCursor, "visible")) === "applied") {
       setCursorStack((current) => [...current, nextCursor]);
     }
   }
@@ -76,7 +77,7 @@ export function useGrowingTrials() {
     if (cursorStack.length === 1) return;
     const previousStack = cursorStack.slice(0, -1);
     const previousCursor = previousStack.at(-1) ?? null;
-    if (await requestPage(previousCursor, "visible")) {
+    if ((await requestPage(previousCursor, "visible")) === "applied") {
       setCursorStack(previousStack);
     }
   }
@@ -106,14 +107,16 @@ export function useGrowingTrials() {
   }
 
   function retryRefresh() {
-    return requestPage(null, "refresh");
+    return requestPage(cursorStack.at(-1) ?? null, "refresh");
   }
 
   function acceptStarted(trial: GrowingTrial) {
+    requestSequence.current += 1;
     setPage((current) => ({
       ...current,
       items: current.items.map((item) => (item.id === trial.id ? trial : item)),
     }));
+    return requestPage(cursorStack.at(-1) ?? null, "refresh");
   }
 
   return {

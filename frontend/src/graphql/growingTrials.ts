@@ -22,7 +22,7 @@ export type GrowingTrial = {
     id: string;
     name: string;
   };
-  status: "PLANNED" | "ACTIVE" | "COMPLETED" | "ABANDONED";
+  status: GrowingTrialStatus;
   startDate: string | null;
   startMethod: GrowingTrialStartMethod | null;
   createdAt: string;
@@ -30,6 +30,8 @@ export type GrowingTrial = {
 };
 
 export type GrowingTrialStartMethod = "SEED" | "SEEDLING_TRANSPLANT";
+export type GrowingTrialStatus =
+  "PLANNED" | "ACTIVE" | "COMPLETED" | "ABANDONED";
 
 export type GrowingTrialPage = {
   items: GrowingTrial[];

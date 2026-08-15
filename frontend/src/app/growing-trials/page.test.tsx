@@ -17,6 +17,7 @@ import {
 } from "@/graphql/growingTrials";
 
 import GrowingTrialsPage from "./page";
+import { formatDateOnly } from "./presentation";
 
 jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn(), hide: jest.fn() },
@@ -344,7 +345,7 @@ describe("GrowingTrialsPage", () => {
     ).toHaveAttribute("href", "/plants");
   });
 
-  it("shows Start only for planned trials and displays persisted active details verbatim", async () => {
+  it("shows a contextual Start control only for planned trials and localizes active details", async () => {
     jest.mocked(listGrowingTrials).mockResolvedValue({
       ...emptyPage,
       items: [
@@ -363,8 +364,11 @@ describe("GrowingTrialsPage", () => {
     renderPage();
 
     await screen.findAllByRole("heading", { name: "Radish in Pot 1" });
-    expect(screen.getAllByRole("button", { name: "Start" })).toHaveLength(1);
-    expect(screen.getByText("Start date: 2026-08-13")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Start Radish in Pot 1" }),
+    ).toHaveLength(1);
+    const displayedDate = document.querySelector('time[datetime="2026-08-13"]');
+    expect(displayedDate).toHaveTextContent(formatDateOnly("2026-08-13"));
     expect(
       screen.getByText("Start method: Seedling/transplant"),
     ).toBeInTheDocument();
@@ -375,7 +379,9 @@ describe("GrowingTrialsPage", () => {
       .mocked(listGrowingTrials)
       .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
 
     expect(
       screen.getByRole("heading", { name: "Start Growing Trial" }),
@@ -391,12 +397,42 @@ describe("GrowingTrialsPage", () => {
     );
   });
 
+  it("recomputes the local maximum date for each modal session", async () => {
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
+    renderPage();
+    await screen.findByRole("button", { name: "Start Radish in Pot 1" });
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 14, 12));
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    expect(screen.getByLabelText("Start date")).toHaveAttribute(
+      "max",
+      "2026-08-14",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    jest.setSystemTime(new Date(2026, 7, 15, 12));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    expect(screen.getByLabelText("Start date")).toHaveAttribute(
+      "max",
+      "2026-08-15",
+    );
+    jest.useRealTimers();
+  });
+
   it("validates required and future start values", async () => {
     jest
       .mocked(listGrowingTrials)
       .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
     const date = screen.getByLabelText("Start date");
     fireEvent.change(date, { target: { value: "" } });
     fireEvent.click(
@@ -423,14 +459,17 @@ describe("GrowingTrialsPage", () => {
       startDate: "2026-08-12",
       startMethod: "SEED" as const,
     };
-    jest.mocked(listGrowingTrials).mockResolvedValue({
-      ...emptyPage,
-      items: [plannedTrial, other],
-    });
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValueOnce({
+        ...emptyPage,
+        items: [plannedTrial, other],
+      })
+      .mockResolvedValueOnce({ ...emptyPage, items: [active, other] });
     jest.mocked(startGrowingTrial).mockResolvedValue(active);
     renderPage();
     const startButtons = await screen.findAllByRole("button", {
-      name: "Start",
+      name: "Start Radish in Pot 1",
     });
     fireEvent.click(startButtons[0]);
     fireEvent.change(screen.getByLabelText("Start date"), {
@@ -450,21 +489,25 @@ describe("GrowingTrialsPage", () => {
       ),
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByText("Start date: 2026-08-12")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Start" })).toHaveLength(1);
+    expect(
+      document.querySelector('time[datetime="2026-08-12"]'),
+    ).toHaveTextContent(formatDateOnly("2026-08-12"));
+    expect(
+      screen.getAllByRole("button", { name: "Start Radish in Pot 1" }),
+    ).toHaveLength(1);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Growing Trial started",
+        message: "Radish in Pot 1 is now active.",
+      }),
+    );
+    await waitFor(() =>
+      expect(document.getElementById("growing-trial-10")).toHaveFocus(),
+    );
   });
 
   it.each([
-    ["GROWING_TRIAL_NOT_FOUND", "Growing Trial not found."],
-    [
-      "GROWING_TRIAL_NOT_PLANNED",
-      "Only planned Growing Trials can be started.",
-    ],
     ["START_DATE_IN_FUTURE", "Start date cannot be in the future."],
-    [
-      "CONTAINER_OCCUPIED",
-      "This Container already has an active Growing Trial.",
-    ],
     [
       "INVALID_TIME_ZONE",
       "Browser time zone is invalid; refresh and try again.",
@@ -477,13 +520,112 @@ describe("GrowingTrialsPage", () => {
       response: { errors: [{ extensions: { code } }] },
     });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
     await selectOption("Start method", "Seed");
     fireEvent.click(
       screen.getByRole("button", { name: "Start Growing Trial" }),
     );
 
     expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "GROWING_TRIAL_NOT_FOUND",
+      "This Growing Trial no longer exists. Refreshing the list.",
+    ],
+    [
+      "GROWING_TRIAL_NOT_PLANNED",
+      "This Growing Trial is no longer planned, so it cannot be started again. Refreshing the list.",
+    ],
+    [
+      "CONTAINER_OCCUPIED",
+      "This Container now has an active Growing Trial. Refreshing the list.",
+    ],
+  ])("closes, refreshes, and notifies for %s", async (code, message) => {
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
+    jest.mocked(startGrowingTrial).mockRejectedValue({
+      response: { errors: [{ extensions: { code } }] },
+    });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    await selectOption("Start method", "Seed");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Growing Trial" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Growing Trial was not started",
+        message,
+      }),
+    );
+    await waitFor(() => expect(listGrowingTrials).toHaveBeenCalledTimes(2));
+    expect(startGrowingTrial).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let an older conflict refresh revert a later successful start", async () => {
+    const staleRefresh = deferred<typeof emptyPage>();
+    const reconciliation = deferred<typeof emptyPage>();
+    const active = {
+      ...plannedTrial,
+      status: "ACTIVE" as const,
+      startDate: "2026-08-12",
+      startMethod: "SEED" as const,
+    };
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValueOnce({ ...emptyPage, items: [plannedTrial] })
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockReturnValueOnce(reconciliation.promise);
+    jest
+      .mocked(startGrowingTrial)
+      .mockRejectedValueOnce({
+        response: {
+          errors: [{ extensions: { code: "GROWING_TRIAL_NOT_PLANNED" } }],
+        },
+      })
+      .mockResolvedValueOnce(active);
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    await selectOption("Start method", "Seed");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Growing Trial" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    await selectOption("Start method", "Seed");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Growing Trial" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await act(async () =>
+      staleRefresh.resolve({ ...emptyPage, items: [plannedTrial] }),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Start Radish in Pot 1" }),
+    ).toBeNull();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+
+    await act(async () =>
+      reconciliation.resolve({ ...emptyPage, items: [active] }),
+    );
+    expect(screen.getByText("Active")).toBeInTheDocument();
   });
 
   it("preserves start values after an unknown failure, prevents closure while saving, and permits retry", async () => {
@@ -496,7 +638,9 @@ describe("GrowingTrialsPage", () => {
       .mockReturnValueOnce(pending.promise)
       .mockRejectedValueOnce(new Error("network"));
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Start" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
     await selectOption("Start method", "Seedling/transplant");
     fireEvent.click(
       screen.getByRole("button", { name: "Start Growing Trial" }),

@@ -12,6 +12,13 @@ import {
 
 import type { GrowingTrial } from "@/graphql/growingTrials";
 
+import {
+  formatDateOnly,
+  startMethodLabels,
+  statusColors,
+  statusLabels,
+} from "./presentation";
+
 type GrowingTrialListProps = {
   trials: GrowingTrial[];
   status: "loading" | "ready" | "error";
@@ -71,14 +78,20 @@ export function GrowingTrialList({
   return (
     <Stack gap="sm">
       {trials.map((trial) => (
-        <Card key={trial.id} withBorder radius="md">
+        <Card
+          id={`growing-trial-${trial.id}`}
+          key={trial.id}
+          tabIndex={-1}
+          withBorder
+          radius="md"
+        >
           <Stack gap="xs">
             <Group justify="space-between" align="flex-start" wrap="wrap">
               <Title order={3}>
                 {trial.plant.name} in {trial.container.name}
               </Title>
-              <Badge variant="light">
-                {trial.status.charAt(0) + trial.status.slice(1).toLowerCase()}
+              <Badge color={statusColors[trial.status]} variant="light">
+                {statusLabels[trial.status]}
               </Badge>
             </Group>
             <Text c="dimmed" size="sm">
@@ -89,18 +102,26 @@ export function GrowingTrialList({
             </Text>
             {trial.startDate ? (
               <Text c="dimmed" size="sm">
-                Start date: {trial.startDate}
+                Start date:{" "}
+                <time dateTime={trial.startDate}>
+                  {formatDateOnly(trial.startDate)}
+                </time>
               </Text>
             ) : null}
             {trial.startMethod ? (
               <Text c="dimmed" size="sm">
-                Start method:{" "}
-                {trial.startMethod === "SEED" ? "Seed" : "Seedling/transplant"}
+                Start method: {startMethodLabels[trial.startMethod]}
               </Text>
             ) : null}
             {trial.status === "PLANNED" ? (
-              <Group justify="flex-end">
-                <Button onClick={() => onStart(trial)} size="xs">
+              <Group justify="flex-end" w="100%">
+                <Button
+                  aria-label={`Start ${trial.plant.name} in ${trial.container.name}`}
+                  fullWidth
+                  mih={44}
+                  onClick={() => onStart(trial)}
+                  size="md"
+                >
                   Start
                 </Button>
               </Group>

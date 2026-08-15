@@ -79,24 +79,31 @@ export const EDIT_PLANT_MUTATION = gql`
   }
 `;
 
+export const GROWING_TRIAL_FIELDS = gql`
+  fragment GrowingTrialFields on GrowingTrialType {
+    id
+    plant {
+      id
+      name
+    }
+    container {
+      id
+      name
+    }
+    status
+    startDate
+    startMethod
+    createdAt
+    updatedAt
+  }
+`;
+
 export const GROWING_TRIALS_QUERY = gql`
+  ${GROWING_TRIAL_FIELDS}
   query GrowingTrials($limit: Int!, $after: String) {
     growingTrials(limit: $limit, after: $after) {
       items {
-        id
-        plant {
-          id
-          name
-        }
-        container {
-          id
-          name
-        }
-        status
-        startDate
-        startMethod
-        createdAt
-        updatedAt
+        ...GrowingTrialFields
       }
       hasNextPage
       hasPreviousPage
@@ -124,27 +131,16 @@ export const GROWING_TRIAL_CONTAINER_OPTIONS_QUERY = gql`
 `;
 
 export const CREATE_GROWING_TRIAL_MUTATION = gql`
+  ${GROWING_TRIAL_FIELDS}
   mutation CreateGrowingTrial($plantId: ID!, $containerId: ID!) {
     createGrowingTrial(plantId: $plantId, containerId: $containerId) {
-      id
-      plant {
-        id
-        name
-      }
-      container {
-        id
-        name
-      }
-      status
-      startDate
-      startMethod
-      createdAt
-      updatedAt
+      ...GrowingTrialFields
     }
   }
 `;
 
 export const START_GROWING_TRIAL_MUTATION = gql`
+  ${GROWING_TRIAL_FIELDS}
   mutation StartGrowingTrial(
     $id: ID!
     $startDate: Date!
@@ -157,20 +153,7 @@ export const START_GROWING_TRIAL_MUTATION = gql`
       startMethod: $startMethod
       timeZone: $timeZone
     ) {
-      id
-      plant {
-        id
-        name
-      }
-      container {
-        id
-        name
-      }
-      status
-      startDate
-      startMethod
-      createdAt
-      updatedAt
+      ...GrowingTrialFields
     }
   }
 `;

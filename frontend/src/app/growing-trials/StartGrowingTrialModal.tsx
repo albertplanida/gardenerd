@@ -15,29 +15,26 @@ import type {
   GrowingTrialStartMethod,
 } from "@/graphql/growingTrials";
 
+import { localCalendarDate, startMethodLabels } from "./presentation";
+
 type StartGrowingTrialModalProps = {
   trial: GrowingTrial | null;
   isSaving: boolean;
   saveError: string | null;
   onClose: () => void;
+  onClosed: () => void;
   onSubmit: (
     startDate: string,
     startMethod: GrowingTrialStartMethod,
   ) => Promise<void>;
 };
 
-export function localCalendarDate(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export function StartGrowingTrialModal({
   trial,
   isSaving,
   saveError,
   onClose,
+  onClosed,
   onSubmit,
 }: StartGrowingTrialModalProps) {
   const [today] = useState(localCalendarDate);
@@ -79,6 +76,7 @@ export function StartGrowingTrialModal({
       closeButtonProps={{ disabled: isSaving }}
       opened={trial !== null}
       onClose={onClose}
+      onExitTransitionEnd={onClosed}
       title="Start Growing Trial"
       transitionProps={{ duration: 0 }}
     >
@@ -109,15 +107,16 @@ export function StartGrowingTrialModal({
           />
           <Select
             data={[
-              { value: "SEED", label: "Seed" },
+              { value: "SEED", label: startMethodLabels.SEED },
               {
                 value: "SEEDLING_TRANSPLANT",
-                label: "Seedling/transplant",
+                label: startMethodLabels.SEEDLING_TRANSPLANT,
               },
             ]}
             disabled={isSaving}
             error={methodError}
             label="Start method"
+            description="Seed means you planted a seed in this Container. Seedling/transplant means you moved a young plant into it."
             onChange={(value) => {
               setStartMethod(value as GrowingTrialStartMethod | null);
               setMethodError(null);
