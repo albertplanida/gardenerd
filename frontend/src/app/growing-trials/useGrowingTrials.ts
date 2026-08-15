@@ -109,6 +109,13 @@ export function useGrowingTrials() {
     return requestPage(null, "refresh");
   }
 
+  function acceptStarted(trial: GrowingTrial) {
+    setPage((current) => ({
+      ...current,
+      items: current.items.map((item) => (item.id === trial.id ? trial : item)),
+    }));
+  }
+
   return {
     ...page,
     status,
@@ -117,6 +124,7 @@ export function useGrowingTrials() {
     previous,
     retry,
     acceptCreated,
+    acceptStarted,
     retryRefresh,
   };
 }

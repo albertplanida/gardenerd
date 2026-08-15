@@ -20,6 +20,7 @@ type GrowingTrialListProps = {
   onNext: () => void;
   onPrevious: () => void;
   onRetry: () => void;
+  onStart: (trial: GrowingTrial) => void;
 };
 
 export function GrowingTrialList({
@@ -30,6 +31,7 @@ export function GrowingTrialList({
   onNext,
   onPrevious,
   onRetry,
+  onStart,
 }: GrowingTrialListProps) {
   if (status === "loading") {
     return (
@@ -75,7 +77,9 @@ export function GrowingTrialList({
               <Title order={3}>
                 {trial.plant.name} in {trial.container.name}
               </Title>
-              <Badge variant="light">Planned</Badge>
+              <Badge variant="light">
+                {trial.status.charAt(0) + trial.status.slice(1).toLowerCase()}
+              </Badge>
             </Group>
             <Text c="dimmed" size="sm">
               Plant: {trial.plant.name}
@@ -83,6 +87,24 @@ export function GrowingTrialList({
             <Text c="dimmed" size="sm">
               Container: {trial.container.name}
             </Text>
+            {trial.startDate ? (
+              <Text c="dimmed" size="sm">
+                Start date: {trial.startDate}
+              </Text>
+            ) : null}
+            {trial.startMethod ? (
+              <Text c="dimmed" size="sm">
+                Start method:{" "}
+                {trial.startMethod === "SEED" ? "Seed" : "Seedling/transplant"}
+              </Text>
+            ) : null}
+            {trial.status === "PLANNED" ? (
+              <Group justify="flex-end">
+                <Button onClick={() => onStart(trial)} size="xs">
+                  Start
+                </Button>
+              </Group>
+            ) : null}
           </Stack>
         </Card>
       ))}

@@ -93,6 +93,8 @@ export const GROWING_TRIALS_QUERY = gql`
           name
         }
         status
+        startDate
+        startMethod
         createdAt
         updatedAt
       }
@@ -134,6 +136,39 @@ export const CREATE_GROWING_TRIAL_MUTATION = gql`
         name
       }
       status
+      startDate
+      startMethod
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const START_GROWING_TRIAL_MUTATION = gql`
+  mutation StartGrowingTrial(
+    $id: ID!
+    $startDate: Date!
+    $startMethod: GrowingTrialStartMethod!
+    $timeZone: String!
+  ) {
+    startGrowingTrial(
+      id: $id
+      startDate: $startDate
+      startMethod: $startMethod
+      timeZone: $timeZone
+    ) {
+      id
+      plant {
+        id
+        name
+      }
+      container {
+        id
+        name
+      }
+      status
+      startDate
+      startMethod
       createdAt
       updatedAt
     }

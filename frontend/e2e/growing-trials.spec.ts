@@ -5,7 +5,9 @@ type MockGrowingTrial = {
   id: string;
   plant: MockOption;
   container: MockOption;
-  status: "PLANNED";
+  status: "PLANNED" | "ACTIVE" | "COMPLETED" | "ABANDONED";
+  startDate: string | null;
+  startMethod: "SEED" | "SEEDLING_TRANSPLANT" | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -22,6 +24,7 @@ type MockGraphqlOptions = {
   refreshFailures?: number;
   plantOptionFailures?: number;
   saveFailures?: number;
+  startErrors?: string[];
 };
 
 const graphqlRoute = /\/graphql\/?(\?.*)?$/;
@@ -35,6 +38,8 @@ function makeTrial(id = "1"): MockGrowingTrial {
     plant,
     container,
     status: "PLANNED",
+    startDate: null,
+    startMethod: null,
     createdAt: "2026-08-14T12:00:00Z",
     updatedAt: "2026-08-14T12:00:00Z",
   };
@@ -58,10 +63,12 @@ async function mockGrowingTrialGraphql(
     refreshFailures = 0,
     plantOptionFailures = 0,
     saveFailures = 0,
+    startErrors = [],
   }: MockGraphqlOptions = {},
 ) {
   const trials = [...initialTrials].sort((a, b) => Number(b.id) - Number(a.id));
   const createRequests: Record<string, string | number | null>[] = [];
+  const startRequests: Record<string, string | number | null>[] = [];
   const unexpected: string[] = [];
   unknownOperations.set(page, unexpected);
   let remainingQueryFailures = queryFailures;
@@ -181,6 +188,33 @@ async function mockGrowingTrialGraphql(
       return;
     }
 
+    if (operationName === "StartGrowingTrial") {
+      startRequests.push(variables);
+      const errorCode = startErrors.shift();
+      if (errorCode) {
+        await route.fulfill({
+          contentType: "application/json",
+          json: {
+            errors: [
+              { message: "Start failed", extensions: { code: errorCode } },
+            ],
+          },
+        });
+        return;
+      }
+      const trial = trials.find((item) => item.id === variables.id);
+      if (!trial) throw new Error(`Unknown trial ${variables.id}`);
+      trial.status = "ACTIVE";
+      trial.startDate = String(variables.startDate);
+      trial.startMethod = variables.startMethod as
+        "SEED" | "SEEDLING_TRANSPLANT";
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { startGrowingTrial: trial } },
+      });
+      return;
+    }
+
     unexpected.push(operationName);
     await route.fulfill({
       contentType: "application/json",
@@ -190,7 +224,7 @@ async function mockGrowingTrialGraphql(
     });
   });
 
-  return { createRequests };
+  return { createRequests, startRequests };
 }
 
 async function chooseTrialRelationships(page: Page) {
@@ -352,4 +386,79 @@ test("supports selector interaction at the configured viewport", async ({
     "Radish",
   );
   expect(["chromium", "mobile-chrome"]).toContain(testInfo.project.name);
+});
+
+test("starts a planned trial in place with exact mutation variables", async ({
+  page,
+}) => {
+  const { startRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [makeTrial("7")],
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Start" }).click();
+  const date = page.getByLabel("Start date");
+  const startDate = await date.inputValue();
+  expect(await date.getAttribute("max")).toBe(startDate);
+  await page.getByRole("combobox", { name: "Start method" }).click();
+  await page.getByRole("option", { name: "Seedling/transplant" }).click();
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+
+  await expect(
+    page.getByText("Start method: Seedling/transplant"),
+  ).toBeVisible();
+  await expect(page.getByText(`Start date: ${startDate}`)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start" })).toHaveCount(0);
+  expect(startRequests).toEqual([
+    {
+      id: "7",
+      startDate,
+      startMethod: "SEEDLING_TRANSPLANT",
+      timeZone: await page.evaluate(
+        () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+    },
+  ]);
+});
+
+test("shows an occupied Container conflict and retries with preserved values", async ({
+  page,
+}) => {
+  const { startRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [makeTrial("7")],
+    startErrors: ["CONTAINER_OCCUPIED"],
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("combobox", { name: "Start method" }).click();
+  await page.getByRole("option", { name: "Seed", exact: true }).click();
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+  await expect(
+    page.getByText("This Container already has an active Growing Trial."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Start method" }),
+  ).toHaveValue("Seed");
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+  await expect(page.getByText("Start method: Seed")).toBeVisible();
+  expect(startRequests).toHaveLength(2);
+});
+
+test("shows a stale lifecycle conflict without changing the planned card", async ({
+  page,
+}) => {
+  await mockGrowingTrialGraphql(page, {
+    initialTrials: [makeTrial("7")],
+    startErrors: ["GROWING_TRIAL_NOT_PLANNED"],
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Start" }).click();
+  await page.getByRole("combobox", { name: "Start method" }).click();
+  await page.getByRole("option", { name: "Seed", exact: true }).click();
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+  await expect(
+    page.getByText("Only planned Growing Trials can be started."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start", exact: true }),
+  ).toBeVisible();
 });
