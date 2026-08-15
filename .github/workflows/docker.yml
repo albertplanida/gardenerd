@@ -100,6 +100,57 @@ jobs:
           docker compose ps
           exit 1
 
+      - name: Start and reload a persisted Growing Trial
+        run: |
+          endpoint=http://127.0.0.1:3000/graphql
+          plant_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' \
+            --data '{"query":"mutation { createPlant(name: \"Smoke Radish\") { id } }"}' \
+            "$endpoint")
+          plant_id=$(jq --exit-status --raw-output '.data.createPlant.id' <<<"$plant_response")
+
+          container_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' \
+            --data '{"query":"mutation { createContainer(name: \"Smoke Pot\") { id } }"}' \
+            "$endpoint")
+          container_id=$(jq --exit-status --raw-output '.data.createContainer.id' <<<"$container_response")
+
+          create_payload=$(jq --null-input --compact-output \
+            --arg plant_id "$plant_id" --arg container_id "$container_id" \
+            '{query: "mutation($plantId: ID!, $containerId: ID!) { createGrowingTrial(plantId: $plantId, containerId: $containerId) { id } }", variables: {plantId: $plant_id, containerId: $container_id}}')
+          trial_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' --data "$create_payload" "$endpoint")
+          trial_id=$(jq --exit-status --raw-output '.data.createGrowingTrial.id' <<<"$trial_response")
+
+          start_payload=$(jq --null-input --compact-output \
+            --arg id "$trial_id" --arg start_date "$(date --utc +%F)" \
+            '{query: "mutation($id: ID!, $startDate: Date!) { startGrowingTrial(id: $id, startDate: $startDate, startMethod: SEED, timeZone: \"UTC\") { id status startDate } }", variables: {id: $id, startDate: $start_date}}')
+          start_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' --data "$start_payload" "$endpoint")
+          jq --exit-status \
+            --arg id "$trial_id" \
+            '.data.startGrowingTrial | select(.id == $id and .status == "ACTIVE")' \
+            <<<"$start_response"
+
+          docker compose restart backend
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error \
+              --header 'Content-Type: application/json' \
+              --data '{"query":"{ health }"}' "$endpoint" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          persisted_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' \
+            --data '{"query":"{ growingTrials { items { id status startDate } } }"}' \
+            "$endpoint")
+          jq --exit-status \
+            --arg id "$trial_id" \
+            '.data.growingTrials.items[] | select(.id == $id and .status == "ACTIVE" and .startDate != null)' \
+            <<<"$persisted_response"
+
       - name: Dump compose logs
         if: failure()
         run: docker compose logs

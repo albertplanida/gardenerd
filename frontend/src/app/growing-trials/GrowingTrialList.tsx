@@ -12,6 +12,13 @@ import {
 
 import type { GrowingTrial } from "@/graphql/growingTrials";
 
+import {
+  formatDateOnly,
+  startMethodLabels,
+  statusColors,
+  statusLabels,
+} from "./presentation";
+
 type GrowingTrialListProps = {
   trials: GrowingTrial[];
   status: "loading" | "ready" | "error";
@@ -20,6 +27,7 @@ type GrowingTrialListProps = {
   onNext: () => void;
   onPrevious: () => void;
   onRetry: () => void;
+  onStart: (trial: GrowingTrial) => void;
 };
 
 export function GrowingTrialList({
@@ -30,6 +38,7 @@ export function GrowingTrialList({
   onNext,
   onPrevious,
   onRetry,
+  onStart,
 }: GrowingTrialListProps) {
   if (status === "loading") {
     return (
@@ -69,13 +78,21 @@ export function GrowingTrialList({
   return (
     <Stack gap="sm">
       {trials.map((trial) => (
-        <Card key={trial.id} withBorder radius="md">
+        <Card
+          id={`growing-trial-${trial.id}`}
+          key={trial.id}
+          tabIndex={-1}
+          withBorder
+          radius="md"
+        >
           <Stack gap="xs">
             <Group justify="space-between" align="flex-start" wrap="wrap">
               <Title order={3}>
                 {trial.plant.name} in {trial.container.name}
               </Title>
-              <Badge variant="light">Planned</Badge>
+              <Badge color={statusColors[trial.status]} variant="light">
+                {statusLabels[trial.status]}
+              </Badge>
             </Group>
             <Text c="dimmed" size="sm">
               Plant: {trial.plant.name}
@@ -83,6 +100,32 @@ export function GrowingTrialList({
             <Text c="dimmed" size="sm">
               Container: {trial.container.name}
             </Text>
+            {trial.startDate ? (
+              <Text c="dimmed" size="sm">
+                Start date:{" "}
+                <time dateTime={trial.startDate}>
+                  {formatDateOnly(trial.startDate)}
+                </time>
+              </Text>
+            ) : null}
+            {trial.startMethod ? (
+              <Text c="dimmed" size="sm">
+                Start method: {startMethodLabels[trial.startMethod]}
+              </Text>
+            ) : null}
+            {trial.status === "PLANNED" ? (
+              <Group justify="flex-end" w="100%">
+                <Button
+                  aria-label={`Start ${trial.plant.name} in ${trial.container.name}`}
+                  fullWidth
+                  mih={44}
+                  onClick={() => onStart(trial)}
+                  size="md"
+                >
+                  Start
+                </Button>
+              </Group>
+            ) : null}
           </Stack>
         </Card>
       ))}
