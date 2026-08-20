@@ -28,6 +28,9 @@ type GrowingTrialListProps = {
   onPrevious: () => void;
   onRetry: () => void;
   onStart: (trial: GrowingTrial) => void;
+  onComplete: (trial: GrowingTrial) => void;
+  onAbandon: (trial: GrowingTrial) => void;
+  onEditResult: (trial: GrowingTrial) => void;
 };
 
 export function GrowingTrialList({
@@ -39,6 +42,9 @@ export function GrowingTrialList({
   onPrevious,
   onRetry,
   onStart,
+  onComplete,
+  onAbandon,
+  onEditResult,
 }: GrowingTrialListProps) {
   if (status === "loading") {
     return (
@@ -113,8 +119,24 @@ export function GrowingTrialList({
                 Start method: {startMethodLabels[trial.startMethod]}
               </Text>
             ) : null}
+            {trial.endDate ? (
+              <Text c="dimmed" size="sm">
+                End date:{" "}
+                <time dateTime={trial.endDate}>
+                  {formatDateOnly(trial.endDate)}
+                </time>
+              </Text>
+            ) : null}
+            {trial.status === "COMPLETED" || trial.status === "ABANDONED" ? (
+              <details>
+                <summary>Result summary</summary>
+                <Text mt="xs" size="sm" style={{ whiteSpace: "pre-wrap" }}>
+                  {trial.resultSummary || "No result summary recorded."}
+                </Text>
+              </details>
+            ) : null}
             {trial.status === "PLANNED" ? (
-              <Group justify="flex-end" w="100%">
+              <Group grow justify="flex-end" w="100%">
                 <Button
                   aria-label={`Start ${trial.plant.name} in ${trial.container.name}`}
                   fullWidth
@@ -123,6 +145,50 @@ export function GrowingTrialList({
                   size="md"
                 >
                   Start
+                </Button>
+                <Button
+                  aria-label={`Abandon ${trial.plant.name} in ${trial.container.name}`}
+                  mih={44}
+                  onClick={() => onAbandon(trial)}
+                  size="md"
+                  variant="default"
+                >
+                  Abandon
+                </Button>
+              </Group>
+            ) : null}
+            {trial.status === "ACTIVE" ? (
+              <Group grow justify="flex-end" w="100%">
+                <Button
+                  aria-label={`Complete ${trial.plant.name} in ${trial.container.name}`}
+                  mih={44}
+                  onClick={() => onComplete(trial)}
+                  size="md"
+                >
+                  Complete
+                </Button>
+                <Button
+                  aria-label={`Abandon ${trial.plant.name} in ${trial.container.name}`}
+                  color="orange"
+                  mih={44}
+                  onClick={() => onAbandon(trial)}
+                  size="md"
+                  variant="light"
+                >
+                  Abandon
+                </Button>
+              </Group>
+            ) : null}
+            {trial.status === "COMPLETED" || trial.status === "ABANDONED" ? (
+              <Group justify="flex-end" w="100%">
+                <Button
+                  aria-label={`Edit result for ${trial.plant.name} in ${trial.container.name}`}
+                  mih={44}
+                  onClick={() => onEditResult(trial)}
+                  size="md"
+                  variant="default"
+                >
+                  Edit
                 </Button>
               </Group>
             ) : null}

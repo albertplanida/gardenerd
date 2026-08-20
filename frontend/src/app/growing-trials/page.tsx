@@ -7,14 +7,21 @@ import { notifications } from "@mantine/notifications";
 import { AppNavigation } from "@/components/AppNavigation";
 import { graphqlErrorCode, type GraphqlErrorCode } from "@/graphql/errors";
 import {
+  abandonGrowingTrial,
+  completeGrowingTrial,
   createGrowingTrial,
   startGrowingTrial,
+  updateGrowingTrialResult,
   type GrowingTrial,
   type GrowingTrialStartMethod,
 } from "@/graphql/growingTrials";
 
 import { GrowingTrialFormModal } from "./GrowingTrialFormModal";
 import { GrowingTrialList } from "./GrowingTrialList";
+import {
+  EndGrowingTrialModal,
+  type EndGrowingTrialMode,
+} from "./EndGrowingTrialModal";
 import { StartGrowingTrialModal } from "./StartGrowingTrialModal";
 import { useGrowingTrialOptions } from "./useGrowingTrialOptions";
 import { useGrowingTrials } from "./useGrowingTrials";
@@ -38,6 +45,25 @@ const lifecycleConflictMessages = {
 type LifecycleConflictCode = keyof typeof lifecycleConflictMessages;
 const genericStartError =
   "Growing Trial could not be started. Check your connection and try again.";
+const terminalErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
+  END_DATE_IN_FUTURE: "End date cannot be in the future.",
+  END_DATE_BEFORE_START: "End date cannot be before the start date.",
+  INVALID_RESULT_SUMMARY: "Result summary cannot exceed 5,000 characters.",
+  INVALID_TIME_ZONE: "Browser time zone is invalid; refresh and try again.",
+};
+const terminalConflictMessages = {
+  GROWING_TRIAL_NOT_FOUND:
+    "This Growing Trial no longer exists. Refreshing the list.",
+  GROWING_TRIAL_NOT_ACTIVE:
+    "This Growing Trial is no longer active, so it cannot be completed. Refreshing the list.",
+  GROWING_TRIAL_NOT_ENDABLE:
+    "This Growing Trial can no longer be abandoned. Refreshing the list.",
+  GROWING_TRIAL_NOT_TERMINAL:
+    "This Growing Trial is no longer completed or abandoned. Refreshing the list.",
+} as const satisfies Partial<Record<GraphqlErrorCode, string>>;
+type TerminalConflictCode = keyof typeof terminalConflictMessages;
+const genericTerminalError =
+  "Growing Trial could not be updated. Check your connection and try again.";
 
 function startErrorMessage(error: unknown) {
   const code = graphqlErrorCode(error);
@@ -48,6 +74,12 @@ function isLifecycleConflict(
   code: GraphqlErrorCode | null,
 ): code is LifecycleConflictCode {
   return code !== null && code in lifecycleConflictMessages;
+}
+
+function isTerminalConflict(
+  code: GraphqlErrorCode | null,
+): code is TerminalConflictCode {
+  return code !== null && code in terminalConflictMessages;
 }
 
 export default function GrowingTrialsPage() {
@@ -64,6 +96,13 @@ export default function GrowingTrialsPage() {
   const [startError, setStartError] = useState<string | null>(null);
   const starting = useRef(false);
   const startFocusTarget = useRef<string | null>(null);
+  const [endTrial, setEndTrial] = useState<GrowingTrial | null>(null);
+  const [endMode, setEndMode] = useState<EndGrowingTrialMode>("complete");
+  const [endModalSession, setEndModalSession] = useState(0);
+  const [isEnding, setIsEnding] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
+  const ending = useRef(false);
+  const endFocusTarget = useRef<string | null>(null);
 
   function closeCreateModal() {
     if (!isSaving) {
@@ -140,7 +179,7 @@ export default function GrowingTrialsPage() {
         Intl.DateTimeFormat().resolvedOptions().timeZone,
       );
       startFocusTarget.current = updated.id;
-      void trials.acceptStarted(updated).then((outcome) => {
+      void trials.acceptUpdated(updated).then((outcome) => {
         if (outcome === "failed") showRefreshWarning();
       });
       setStartTrial(null);
@@ -170,6 +209,90 @@ export default function GrowingTrialsPage() {
     } finally {
       starting.current = false;
       setIsStarting(false);
+    }
+  }
+
+  function openEndModal(trial: GrowingTrial, mode: EndGrowingTrialMode) {
+    setEndError(null);
+    setEndMode(mode);
+    setEndModalSession((current) => current + 1);
+    endFocusTarget.current = trial.id;
+    setEndTrial(trial);
+  }
+
+  function closeEndModal() {
+    if (!ending.current) {
+      setEndTrial(null);
+      setEndError(null);
+    }
+  }
+
+  async function handleEnd(endDate: string, resultSummary: string) {
+    if (!endTrial || ending.current) return;
+    ending.current = true;
+    setIsEnding(true);
+    setEndError(null);
+
+    try {
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const updated =
+        endMode === "complete"
+          ? await completeGrowingTrial(
+              endTrial.id,
+              endDate,
+              resultSummary || null,
+              timeZone,
+            )
+          : endMode === "abandon"
+            ? await abandonGrowingTrial(
+                endTrial.id,
+                endDate,
+                resultSummary || null,
+                timeZone,
+              )
+            : await updateGrowingTrialResult(
+                endTrial.id,
+                endDate,
+                resultSummary || null,
+                timeZone,
+              );
+      void trials.acceptUpdated(updated).then((outcome) => {
+        if (outcome === "failed") showRefreshWarning();
+      });
+      setEndTrial(null);
+      notifications.show({
+        title:
+          endMode === "complete"
+            ? "Growing Trial completed"
+            : endMode === "abandon"
+              ? "Growing Trial abandoned"
+              : "Growing Trial result updated",
+        message: `${updated.plant.name} in ${updated.container.name}`,
+        color: "green",
+        autoClose: 5000,
+      });
+    } catch (error) {
+      const code = graphqlErrorCode(error);
+      if (isTerminalConflict(code)) {
+        setEndTrial(null);
+        setEndError(null);
+        notifications.show({
+          title: "Growing Trial was not updated",
+          message: terminalConflictMessages[code],
+          color: "yellow",
+          autoClose: 8000,
+        });
+        void trials.retryRefresh().then((outcome) => {
+          if (outcome === "failed") showRefreshWarning();
+        });
+      } else {
+        setEndError(
+          (code && terminalErrorMessages[code]) || genericTerminalError,
+        );
+      }
+    } finally {
+      ending.current = false;
+      setIsEnding(false);
     }
   }
 
@@ -210,6 +333,9 @@ export default function GrowingTrialsPage() {
             setStartModalSession((current) => current + 1);
             setStartTrial(trial);
           }}
+          onComplete={(trial) => openEndModal(trial, "complete")}
+          onAbandon={(trial) => openEndModal(trial, "abandon")}
+          onEditResult={(trial) => openEndModal(trial, "edit")}
         />
       </Stack>
 
@@ -236,6 +362,20 @@ export default function GrowingTrialsPage() {
         onSubmit={handleStart}
         saveError={startError}
         trial={startTrial}
+      />
+      <EndGrowingTrialModal
+        key={`end-${endModalSession}`}
+        isSaving={isEnding}
+        mode={endMode}
+        onClose={closeEndModal}
+        onClosed={() => {
+          const id = endFocusTarget.current;
+          endFocusTarget.current = null;
+          if (id) document.getElementById(`growing-trial-${id}`)?.focus();
+        }}
+        onSubmit={handleEnd}
+        saveError={endError}
+        trial={endTrial}
       />
     </Container>
   );

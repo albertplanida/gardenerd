@@ -8,6 +8,8 @@ type MockGrowingTrial = {
   status: "PLANNED" | "ACTIVE" | "COMPLETED" | "ABANDONED";
   startDate: string | null;
   startMethod: "SEED" | "SEEDLING_TRANSPLANT" | null;
+  endDate: string | null;
+  resultSummary: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -40,6 +42,8 @@ function makeTrial(id = "1"): MockGrowingTrial {
     status: "PLANNED",
     startDate: null,
     startMethod: null,
+    endDate: null,
+    resultSummary: "",
     createdAt: "2026-08-14T12:00:00Z",
     updatedAt: "2026-08-14T12:00:00Z",
   };
@@ -69,6 +73,7 @@ async function mockGrowingTrialGraphql(
   const trials = [...initialTrials].sort((a, b) => Number(b.id) - Number(a.id));
   const createRequests: Record<string, string | number | null>[] = [];
   const startRequests: Record<string, string | number | null>[] = [];
+  const terminalRequests: Record<string, string | number | null>[] = [];
   const listRequests: Record<string, string | number | null>[] = [];
   const unexpected: string[] = [];
   unknownOperations.set(page, unexpected);
@@ -227,6 +232,36 @@ async function mockGrowingTrialGraphql(
       return;
     }
 
+    if (
+      operationName === "CompleteGrowingTrial" ||
+      operationName === "AbandonGrowingTrial" ||
+      operationName === "UpdateGrowingTrialResult"
+    ) {
+      terminalRequests.push(variables);
+      const trial = trials.find((item) => item.id === variables.id);
+      if (!trial) throw new Error(`Unknown trial ${variables.id}`);
+      if (operationName === "CompleteGrowingTrial") {
+        trial.status = "COMPLETED";
+      } else if (operationName === "AbandonGrowingTrial") {
+        trial.status = "ABANDONED";
+      }
+      trial.endDate = String(variables.endDate);
+      trial.resultSummary = String(variables.resultSummary ?? "").trim();
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            [operationName === "CompleteGrowingTrial"
+              ? "completeGrowingTrial"
+              : operationName === "AbandonGrowingTrial"
+                ? "abandonGrowingTrial"
+                : "updateGrowingTrialResult"]: trial,
+          },
+        },
+      });
+      return;
+    }
+
     unexpected.push(operationName);
     await route.fulfill({
       contentType: "application/json",
@@ -236,7 +271,7 @@ async function mockGrowingTrialGraphql(
     });
   });
 
-  return { createRequests, listRequests, startRequests };
+  return { createRequests, listRequests, startRequests, terminalRequests };
 }
 
 async function chooseTrialRelationships(page: Page) {
@@ -475,6 +510,60 @@ test("refreshes a card after a stale lifecycle conflict", async ({ page }) => {
   await expect(page.getByText("Active")).toBeVisible();
 });
 
+test("completes an active trial with exact variables and edits its result", async ({
+  page,
+}) => {
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-08-01",
+    startMethod: "SEED" as const,
+  };
+  const { terminalRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Complete Radish in Pot 1" }).click();
+  const date = page.getByLabel("End date");
+  const endDate = await date.inputValue();
+  await page.getByLabel("Result summary (optional)").fill("  Strong harvest  ");
+  await page.getByRole("button", { name: "Complete Growing Trial" }).click();
+
+  await expect(page.getByText("Growing Trial completed")).toBeVisible();
+  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(page.locator(`time[datetime="${endDate}"]`)).toBeVisible();
+  await expect(page.locator("#growing-trial-7")).toBeFocused();
+  await page.getByText("Result summary").click();
+  await expect(page.getByText("Strong harvest")).toBeVisible();
+  expect(terminalRequests[0]).toEqual({
+    id: "7",
+    endDate,
+    resultSummary: "  Strong harvest  ",
+    timeZone: await page.evaluate(
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ),
+  });
+
+  await page
+    .getByRole("button", { name: "Edit result for Radish in Pot 1" })
+    .click();
+  await expect(page.getByLabel("End date")).toHaveValue(endDate);
+  await expect(page.getByLabel("Result summary (optional)")).toHaveValue(
+    "Strong harvest",
+  );
+  await page.getByLabel("Result summary (optional)").fill("Revised result");
+  await page.getByRole("button", { name: "Save Result" }).click();
+  await expect(page.getByText("Growing Trial result updated")).toBeVisible();
+  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  expect(terminalRequests[1]).toEqual(
+    expect.objectContaining({
+      id: "7",
+      endDate,
+      resultSummary: "Revised result",
+    }),
+  );
+});
+
 test("keeps the planned card within the mobile viewport with a touch-friendly action", async ({
   page,
 }, testInfo) => {
@@ -483,9 +572,13 @@ test("keeps the planned card within the mobile viewport with a touch-friendly ac
   await page.goto("/growing-trials");
 
   const start = page.getByRole("button", { name: "Start Radish in Pot 1" });
+  const abandon = page.getByRole("button", { name: "Abandon Radish in Pot 1" });
   await expect(start).toBeVisible();
+  await expect(abandon).toBeVisible();
   const box = await start.boundingBox();
+  const abandonBox = await abandon.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(abandonBox?.height).toBeGreaterThanOrEqual(44);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(
