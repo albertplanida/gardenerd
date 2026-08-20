@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'strawberry.django',
     'apps.containers',
     'apps.growing_trials',
+    'apps.journal',
     'apps.plants',
     'django.contrib.admin',
     'django.contrib.auth',
