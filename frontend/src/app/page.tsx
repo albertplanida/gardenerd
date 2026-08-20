@@ -45,6 +45,18 @@ export default function Home() {
               </Button>
             </Stack>
           </Card>
+
+          <Card withBorder shadow="sm" radius="md">
+            <Stack gap="sm">
+              <Title order={2}>Growing Trials</Title>
+              <Text c="dimmed">
+                Plan growing attempts by pairing one Plant with one Container.
+              </Text>
+              <Button component="a" href="/growing-trials" variant="light">
+                Manage Growing Trials
+              </Button>
+            </Stack>
+          </Card>
         </SimpleGrid>
       </Stack>
     </Container>

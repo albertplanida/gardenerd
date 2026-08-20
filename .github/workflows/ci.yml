@@ -14,6 +14,21 @@ jobs:
     name: Backend
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: gardenerd_test
+          POSTGRES_USER: gardenerd
+          POSTGRES_PASSWORD: ci-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gardenerd -d gardenerd_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     defaults:
       run:
         working-directory: backend
@@ -23,6 +38,12 @@ jobs:
       DJANGO_DEBUG: "False"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       CSRF_TRUSTED_ORIGINS: http://localhost:3000
+      POSTGRES_DB: gardenerd_test
+      POSTGRES_USER: gardenerd
+      POSTGRES_PASSWORD: ci-postgres-password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      REQUIRE_POSTGRES: "1"
 
     steps:
       - name: Check out repository
@@ -44,6 +65,12 @@ jobs:
 
       - name: Lint backend
         run: uv run ruff check .
+
+      - name: Check Django configuration
+        run: uv run python manage.py check
+
+      - name: Check for missing migrations
+        run: uv run python manage.py makemigrations --check --dry-run
 
       - name: Test backend
         run: uv run pytest

@@ -4,8 +4,10 @@ import {
   MantineProvider,
   mantineHtmlProps,
 } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
 
 import "@mantine/core/styles.css";
+import "@mantine/notifications/styles.css";
 
 export const metadata: Metadata = {
   title: "Gardenerd",
@@ -23,7 +25,10 @@ export default function RootLayout({
         <ColorSchemeScript />
       </head>
       <body>
-        <MantineProvider>{children}</MantineProvider>
+        <MantineProvider>
+          <Notifications />
+          {children}
+        </MantineProvider>
       </body>
     </html>
   );
