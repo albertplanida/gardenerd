@@ -5,7 +5,10 @@ import strawberry
 from django.db.models.functions import Lower
 
 from apps.containers.models import CONTAINER_NAME_MAX_LENGTH, Container
-from apps.growing_trials.graphql.GrowingTrial.types import GrowingTrialType
+from apps.growing_trials.graphql.GrowingTrial.types import (
+    GrowingTrialStatusType,
+    GrowingTrialType,
+)
 from apps.growing_trials.models import GrowingTrial
 from apps.plants.models import PLANT_NAME_MAX_LENGTH, Plant
 
@@ -71,6 +74,7 @@ class GrowingTrialQueries:
         self,
         limit: int = DEFAULT_GROWING_TRIALS_QUERY_LIMIT,
         after: str | None = None,
+        status: GrowingTrialStatusType | None = None,
     ) -> GrowingTrialPage:
         if limit < 1 or limit > MAX_GROWING_TRIALS_QUERY_LIMIT:
             raise ValueError(
@@ -78,11 +82,12 @@ class GrowingTrialQueries:
                 f'1 and {MAX_GROWING_TRIALS_QUERY_LIMIT}'
             )
 
-        queryset = GrowingTrial.objects.select_related('plant', 'container').order_by(
-            '-id'
-        )
+        queryset = GrowingTrial.objects.select_related('plant', 'container')
+        if status is not None:
+            queryset = queryset.filter(status=status.value)
         if after is not None:
             queryset = queryset.filter(id__lt=_decode_cursor(after))
+        queryset = queryset.order_by('-id')
 
         rows = list(queryset[: limit + 1])
         items = rows[:limit]
