@@ -48,6 +48,8 @@ const genericStartError =
 const terminalErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
   END_DATE_IN_FUTURE: "End date cannot be in the future.",
   END_DATE_BEFORE_START: "End date cannot be before the start date.",
+  END_DATE_BEFORE_LATEST_JOURNAL_EVENT:
+    "End date cannot be before the latest Journal Event.",
   INVALID_RESULT_SUMMARY: "Result summary cannot exceed 5,000 characters.",
   INVALID_TIME_ZONE: "Browser time zone is invalid; refresh and try again.",
 };
@@ -336,6 +338,7 @@ export default function GrowingTrialsPage() {
           onComplete={(trial) => openEndModal(trial, "complete")}
           onAbandon={(trial) => openEndModal(trial, "abandon")}
           onEditResult={(trial) => openEndModal(trial, "edit")}
+          onRefreshTrials={trials.retryRefresh}
         />
       </Stack>
 

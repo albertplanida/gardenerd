@@ -18,6 +18,7 @@ import {
   statusColors,
   statusLabels,
 } from "./presentation";
+import { JournalEventTimeline } from "./JournalEventTimeline";
 
 type GrowingTrialListProps = {
   trials: GrowingTrial[];
@@ -31,6 +32,7 @@ type GrowingTrialListProps = {
   onComplete: (trial: GrowingTrial) => void;
   onAbandon: (trial: GrowingTrial) => void;
   onEditResult: (trial: GrowingTrial) => void;
+  onRefreshTrials: () => Promise<unknown>;
 };
 
 export function GrowingTrialList({
@@ -45,6 +47,7 @@ export function GrowingTrialList({
   onComplete,
   onAbandon,
   onEditResult,
+  onRefreshTrials,
 }: GrowingTrialListProps) {
   if (status === "loading") {
     return (
@@ -192,6 +195,10 @@ export function GrowingTrialList({
                 </Button>
               </Group>
             ) : null}
+            <JournalEventTimeline
+              onRefreshTrials={onRefreshTrials}
+              trial={trial}
+            />
           </Stack>
         </Card>
       ))}
