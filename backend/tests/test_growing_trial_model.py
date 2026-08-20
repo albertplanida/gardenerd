@@ -184,31 +184,124 @@ def test_database_rejects_invalid_start_states(
 
 
 LIFECYCLE_MATRIX = [
-    (GrowingTrialStatus.PLANNED, None, None, True),
-    (GrowingTrialStatus.PLANNED, '2026-08-14', GrowingTrialStartMethod.SEED, False),
-    (GrowingTrialStatus.PLANNED, '2026-08-14', None, False),
-    (GrowingTrialStatus.PLANNED, None, GrowingTrialStartMethod.SEED, False),
-    (GrowingTrialStatus.ACTIVE, None, None, False),
-    (GrowingTrialStatus.ACTIVE, '2026-08-14', GrowingTrialStartMethod.SEED, True),
-    (GrowingTrialStatus.ACTIVE, '2026-08-14', None, False),
-    (GrowingTrialStatus.ACTIVE, None, GrowingTrialStartMethod.SEED, False),
-    (GrowingTrialStatus.COMPLETED, None, None, False),
-    (GrowingTrialStatus.COMPLETED, '2026-08-14', GrowingTrialStartMethod.SEED, True),
-    (GrowingTrialStatus.COMPLETED, '2026-08-14', None, False),
-    (GrowingTrialStatus.COMPLETED, None, GrowingTrialStartMethod.SEED, False),
-    (GrowingTrialStatus.ABANDONED, None, None, True),
-    (GrowingTrialStatus.ABANDONED, '2026-08-14', GrowingTrialStartMethod.SEED, True),
-    (GrowingTrialStatus.ABANDONED, '2026-08-14', None, False),
-    (GrowingTrialStatus.ABANDONED, None, GrowingTrialStartMethod.SEED, False),
+    (GrowingTrialStatus.PLANNED, None, None, None, '', True),
+    (GrowingTrialStatus.PLANNED, None, None, '2026-08-14', '', False),
+    (GrowingTrialStatus.PLANNED, None, None, None, 'Result', False),
+    (
+        GrowingTrialStatus.PLANNED,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        None,
+        '',
+        False,
+    ),
+    (GrowingTrialStatus.PLANNED, '2026-08-14', None, None, '', False),
+    (GrowingTrialStatus.PLANNED, None, GrowingTrialStartMethod.SEED, None, '', False),
+    (GrowingTrialStatus.ACTIVE, None, None, None, '', False),
+    (
+        GrowingTrialStatus.ACTIVE,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        None,
+        '',
+        True,
+    ),
+    (
+        GrowingTrialStatus.ACTIVE,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        '',
+        False,
+    ),
+    (
+        GrowingTrialStatus.ACTIVE,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        None,
+        'Result',
+        False,
+    ),
+    (GrowingTrialStatus.ACTIVE, '2026-08-14', None, None, '', False),
+    (GrowingTrialStatus.ACTIVE, None, GrowingTrialStartMethod.SEED, None, '', False),
+    (GrowingTrialStatus.COMPLETED, None, None, '2026-08-15', '', False),
+    (
+        GrowingTrialStatus.COMPLETED,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        None,
+        '',
+        False,
+    ),
+    (
+        GrowingTrialStatus.COMPLETED,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        '',
+        True,
+    ),
+    (
+        GrowingTrialStatus.COMPLETED,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        'Result',
+        True,
+    ),
+    (GrowingTrialStatus.COMPLETED, '2026-08-14', None, '2026-08-15', '', False),
+    (
+        GrowingTrialStatus.COMPLETED,
+        None,
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        '',
+        False,
+    ),
+    (GrowingTrialStatus.ABANDONED, None, None, None, '', False),
+    (GrowingTrialStatus.ABANDONED, None, None, '2026-08-15', '', True),
+    (GrowingTrialStatus.ABANDONED, None, None, '2026-08-15', 'Result', True),
+    (
+        GrowingTrialStatus.ABANDONED,
+        '2026-08-14',
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        '',
+        True,
+    ),
+    (GrowingTrialStatus.ABANDONED, '2026-08-14', None, '2026-08-15', '', False),
+    (
+        GrowingTrialStatus.ABANDONED,
+        None,
+        GrowingTrialStartMethod.SEED,
+        '2026-08-15',
+        '',
+        False,
+    ),
 ]
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ('status', 'start_date', 'start_method', 'is_valid'), LIFECYCLE_MATRIX
+    (
+        'status',
+        'start_date',
+        'start_method',
+        'end_date',
+        'result_summary',
+        'is_valid',
+    ),
+    LIFECYCLE_MATRIX,
 )
 def test_model_save_enforces_lifecycle_matrix(
-    plant, container, status, start_date, start_method, is_valid
+    plant,
+    container,
+    status,
+    start_date,
+    start_method,
+    end_date,
+    result_summary,
+    is_valid,
 ):
     trial = GrowingTrial(
         plant=plant,
@@ -216,6 +309,8 @@ def test_model_save_enforces_lifecycle_matrix(
         status=status,
         start_date=start_date,
         start_method=start_method,
+        end_date=end_date,
+        result_summary=result_summary,
     )
 
     if is_valid:
@@ -228,25 +323,50 @@ def test_model_save_enforces_lifecycle_matrix(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ('status', 'start_date', 'start_method', 'is_valid'), LIFECYCLE_MATRIX
+    (
+        'status',
+        'start_date',
+        'start_method',
+        'end_date',
+        'result_summary',
+        'is_valid',
+    ),
+    LIFECYCLE_MATRIX,
 )
 def test_queryset_update_enforces_lifecycle_matrix(
-    plant, container, status, start_date, start_method, is_valid
+    plant,
+    container,
+    status,
+    start_date,
+    start_method,
+    end_date,
+    result_summary,
+    is_valid,
 ):
     trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
     changes = {
         'status': status,
         'start_date': start_date,
         'start_method': start_method,
+        'end_date': end_date,
+        'result_summary': result_summary,
     }
 
     if is_valid:
         assert GrowingTrial.objects.filter(pk=trial.pk).update(**changes) == 1
         trial.refresh_from_db()
-        assert (trial.status, trial.start_date, trial.start_method) == (
+        assert (
+            trial.status,
+            trial.start_date,
+            trial.start_method,
+            trial.end_date,
+            trial.result_summary,
+        ) == (
             status,
             None if start_date is None else date.fromisoformat(start_date),
             start_method,
+            None if end_date is None else date.fromisoformat(end_date),
+            result_summary,
         )
     else:
         with pytest.raises(IntegrityError), transaction.atomic():
