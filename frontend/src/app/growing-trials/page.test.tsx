@@ -22,6 +22,12 @@ import {
 import GrowingTrialsPage from "./page";
 import { formatDateOnly } from "./presentation";
 
+const mockPush = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
 jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn(), hide: jest.fn() },
 }));
@@ -108,7 +114,12 @@ describe("GrowingTrialsPage", () => {
       "Loading Growing Trials...",
     );
     await waitFor(() =>
-      expect(listGrowingTrials).toHaveBeenCalledWith(20, null),
+      expect(listGrowingTrials).toHaveBeenCalledWith({
+        limit: 20,
+        after: null,
+        status: null,
+        signal: expect.any(AbortSignal),
+      }),
     );
     await act(async () => pending.resolve(emptyPage));
   });
@@ -139,11 +150,21 @@ describe("GrowingTrialsPage", () => {
     await screen.findByRole("heading", { name: "Radish in Pot 1" });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() =>
-      expect(listGrowingTrials).toHaveBeenLastCalledWith(20, "cursor-10"),
+      expect(listGrowingTrials).toHaveBeenLastCalledWith({
+        limit: 20,
+        after: "cursor-10",
+        status: null,
+        signal: expect.any(AbortSignal),
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
     await waitFor(() =>
-      expect(listGrowingTrials).toHaveBeenLastCalledWith(20, null),
+      expect(listGrowingTrials).toHaveBeenLastCalledWith({
+        limit: 20,
+        after: null,
+        status: null,
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
