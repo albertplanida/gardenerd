@@ -28,6 +28,8 @@ class GrowingTrialType:
     plant: PlantType
     container: ContainerType
     start_date: strawberry.auto
+    end_date: strawberry.auto
+    result_summary: strawberry.auto
     created_at: strawberry.auto
     updated_at: strawberry.auto
 

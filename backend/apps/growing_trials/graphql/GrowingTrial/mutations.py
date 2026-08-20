@@ -13,13 +13,29 @@ from apps.growing_trials.graphql.GrowingTrial.types import (
 from apps.growing_trials.models import GrowingTrial
 from apps.growing_trials.services import (
     GrowingTrialTransitionError,
+    abandon_growing_trial,
+    complete_growing_trial,
     start_growing_trial,
+    update_growing_trial_result,
 )
 from apps.plants.models import Plant
 
 PLANT_NOT_FOUND_MESSAGE = 'Plant not found'
 CONTAINER_NOT_FOUND_MESSAGE = 'Container not found'
 logger = logging.getLogger(__name__)
+
+
+def _run_lifecycle_mutation(operation, action: str, trial_id: strawberry.ID, **values):
+    try:
+        return operation(trial_id=trial_id, **values)
+    except GrowingTrialTransitionError as exc:
+        raise GraphQLError(str(exc), extensions={'code': exc.code}) from exc
+    except Exception as exc:
+        logger.exception('Unexpected error while %s Growing Trial %s', action, trial_id)
+        raise GraphQLError(
+            'Internal server error.',
+            extensions={'code': 'INTERNAL_ERROR'},
+        ) from exc
 
 
 def _get_plant(plant_id: strawberry.ID) -> Plant:
@@ -57,18 +73,62 @@ class GrowingTrialMutations:
         start_method: GrowingTrialStartMethod,
         time_zone: str,
     ) -> GrowingTrialType:
-        try:
-            return start_growing_trial(
-                trial_id=id,
-                start_date=start_date,
-                start_method=start_method.value,
-                time_zone=time_zone,
-            )
-        except GrowingTrialTransitionError as exc:
-            raise GraphQLError(str(exc), extensions={'code': exc.code}) from exc
-        except Exception as exc:
-            logger.exception('Unexpected error while starting Growing Trial %s', id)
-            raise GraphQLError(
-                'Internal server error.',
-                extensions={'code': 'INTERNAL_ERROR'},
-            ) from exc
+        return _run_lifecycle_mutation(
+            start_growing_trial,
+            'starting',
+            id,
+            start_date=start_date,
+            start_method=start_method.value,
+            time_zone=time_zone,
+        )
+
+    @strawberry.mutation
+    def complete_growing_trial(
+        self,
+        id: strawberry.ID,
+        end_date: datetime.date,
+        result_summary: str | None,
+        time_zone: str,
+    ) -> GrowingTrialType:
+        return _run_lifecycle_mutation(
+            complete_growing_trial,
+            'completing',
+            id,
+            end_date=end_date,
+            result_summary=result_summary,
+            time_zone=time_zone,
+        )
+
+    @strawberry.mutation
+    def abandon_growing_trial(
+        self,
+        id: strawberry.ID,
+        end_date: datetime.date,
+        result_summary: str | None,
+        time_zone: str,
+    ) -> GrowingTrialType:
+        return _run_lifecycle_mutation(
+            abandon_growing_trial,
+            'abandoning',
+            id,
+            end_date=end_date,
+            result_summary=result_summary,
+            time_zone=time_zone,
+        )
+
+    @strawberry.mutation
+    def update_growing_trial_result(
+        self,
+        id: strawberry.ID,
+        end_date: datetime.date,
+        result_summary: str | None,
+        time_zone: str,
+    ) -> GrowingTrialType:
+        return _run_lifecycle_mutation(
+            update_growing_trial_result,
+            'updating result for',
+            id,
+            end_date=end_date,
+            result_summary=result_summary,
+            time_zone=time_zone,
+        )
