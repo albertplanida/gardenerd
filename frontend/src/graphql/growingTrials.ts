@@ -1,10 +1,13 @@
 import { createGraphqlClient } from "./client";
 import {
+  ABANDON_GROWING_TRIAL_MUTATION,
+  COMPLETE_GROWING_TRIAL_MUTATION,
   CREATE_GROWING_TRIAL_MUTATION,
   GROWING_TRIAL_CONTAINER_OPTIONS_QUERY,
   GROWING_TRIAL_PLANT_OPTIONS_QUERY,
   GROWING_TRIALS_QUERY,
   START_GROWING_TRIAL_MUTATION,
+  UPDATE_GROWING_TRIAL_RESULT_MUTATION,
 } from "./queries";
 
 export type GrowingTrialOption = {
@@ -25,6 +28,8 @@ export type GrowingTrial = {
   status: GrowingTrialStatus;
   startDate: string | null;
   startMethod: GrowingTrialStartMethod | null;
+  endDate: string | null;
+  resultSummary: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -50,6 +55,25 @@ type CreateGrowingTrialResponse = {
 
 type StartGrowingTrialResponse = {
   startGrowingTrial: GrowingTrial;
+};
+
+export type TerminalGrowingTrialVariables = {
+  id: string;
+  endDate: string;
+  resultSummary: string | null;
+  timeZone: string;
+};
+
+export type CompleteGrowingTrialResponse = {
+  completeGrowingTrial: GrowingTrial;
+};
+
+export type AbandonGrowingTrialResponse = {
+  abandonGrowingTrial: GrowingTrial;
+};
+
+export type UpdateGrowingTrialResultResponse = {
+  updateGrowingTrialResult: GrowingTrial;
 };
 
 export async function listGrowingTrials(
@@ -126,4 +150,67 @@ export async function startGrowingTrial(
   );
 
   return data.startGrowingTrial;
+}
+
+export async function completeGrowingTrial(
+  id: string,
+  endDate: string,
+  resultSummary: string | null,
+  timeZone: string,
+) {
+  const client = createGraphqlClient();
+  const variables: TerminalGrowingTrialVariables = {
+    id,
+    endDate,
+    resultSummary,
+    timeZone,
+  };
+  const data = await client.request<CompleteGrowingTrialResponse>(
+    COMPLETE_GROWING_TRIAL_MUTATION,
+    variables,
+  );
+
+  return data.completeGrowingTrial;
+}
+
+export async function abandonGrowingTrial(
+  id: string,
+  endDate: string,
+  resultSummary: string | null,
+  timeZone: string,
+) {
+  const client = createGraphqlClient();
+  const variables: TerminalGrowingTrialVariables = {
+    id,
+    endDate,
+    resultSummary,
+    timeZone,
+  };
+  const data = await client.request<AbandonGrowingTrialResponse>(
+    ABANDON_GROWING_TRIAL_MUTATION,
+    variables,
+  );
+
+  return data.abandonGrowingTrial;
+}
+
+export async function updateGrowingTrialResult(
+  id: string,
+  endDate: string,
+  resultSummary: string | null,
+  timeZone: string,
+) {
+  const client = createGraphqlClient();
+  const variables: TerminalGrowingTrialVariables = {
+    id,
+    endDate,
+    resultSummary,
+    timeZone,
+  };
+  const data = await client.request<UpdateGrowingTrialResultResponse>(
+    UPDATE_GROWING_TRIAL_RESULT_MUTATION,
+    variables,
+  );
+
+  return data.updateGrowingTrialResult;
 }

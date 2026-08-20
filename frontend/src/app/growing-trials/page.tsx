@@ -20,13 +20,13 @@ import { useGrowingTrialOptions } from "./useGrowingTrialOptions";
 import { useGrowingTrials } from "./useGrowingTrials";
 
 const refreshNotificationId = "growing-trial-refresh-failed";
-const startErrorMessages = {
+const startErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
   GROWING_TRIAL_NOT_FOUND: "Growing Trial not found.",
   GROWING_TRIAL_NOT_PLANNED: "Only planned Growing Trials can be started.",
   START_DATE_IN_FUTURE: "Start date cannot be in the future.",
   CONTAINER_OCCUPIED: "This Container already has an active Growing Trial.",
   INVALID_TIME_ZONE: "Browser time zone is invalid; refresh and try again.",
-} satisfies Record<GraphqlErrorCode, string>;
+};
 const lifecycleConflictMessages = {
   GROWING_TRIAL_NOT_FOUND:
     "This Growing Trial no longer exists. Refreshing the list.",
