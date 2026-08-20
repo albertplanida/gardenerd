@@ -27,6 +27,21 @@ describe("graphqlErrorCode", () => {
   });
 
   it.each([
+    "JOURNAL_EVENT_NOT_FOUND",
+    "EVENT_DATE_BEFORE_TRIAL_START",
+    "EVENT_DATE_IN_FUTURE",
+    "END_DATE_BEFORE_LATEST_JOURNAL_EVENT",
+    "INVALID_JOURNAL_NOTE",
+    "INTERNAL_ERROR",
+  ])("recognizes the Journal code %s", (code) => {
+    expect(
+      graphqlErrorCode({
+        response: { errors: [{ extensions: { code } }] },
+      }),
+    ).toBe(code);
+  });
+
+  it.each([
     new Error("network"),
     { response: { errors: [{ extensions: { code: "NEW_SERVER_CODE" } }] } },
     { response: { errors: [] } },
