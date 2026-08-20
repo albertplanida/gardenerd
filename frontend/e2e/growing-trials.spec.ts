@@ -95,6 +95,20 @@ async function mockGrowingTrialGraphql(
     const operationName = getOperationName(body);
     const variables = body.variables ?? {};
 
+    if (operationName === "GrowingTrialSetupContext") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            plants: plants.slice(0, 1),
+            containers: containers.slice(0, 1),
+            trials: { items: trials.slice(0, 1).map(({ id }) => ({ id })) },
+          },
+        },
+      });
+      return;
+    }
+
     if (operationName === "GrowingTrials") {
       listRequests.push(variables);
       const shouldFailInitial = remainingQueryFailures > 0;
@@ -294,7 +308,7 @@ test.afterEach(async ({ page }) => {
 test("navigates from home to Growing Trials", async ({ page }) => {
   await mockGrowingTrialGraphql(page);
   await page.goto("/");
-  await page.getByRole("link", { name: "Manage Growing Trials" }).click();
+  await page.getByRole("link", { name: "Growing Trials", exact: true }).click();
   await expect(page).toHaveURL(/\/growing-trials$/);
   await expect(
     page.getByRole("heading", { name: "No Growing Trials yet" }),

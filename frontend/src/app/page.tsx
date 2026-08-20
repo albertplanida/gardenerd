@@ -1,64 +1,35 @@
-import {
-  Button,
-  Card,
-  Container,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+import type { GrowingTrialStatus } from "@/graphql/growingTrials";
+
+import { GrowingTrialsWorkspace } from "./growing-trials/GrowingTrialsWorkspace";
+
+const dashboardStatuses: Record<string, GrowingTrialStatus | null> = {
+  active: "ACTIVE",
+  planned: "PLANNED",
+  completed: "COMPLETED",
+  abandoned: "ABANDONED",
+  all: null,
+};
+
+type HomeProps = {
+  searchParams: Promise<{ status?: string | string[] }>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
+  const status = (await searchParams).status;
+
+  if (
+    Array.isArray(status) ||
+    (status !== undefined && !(status in dashboardStatuses))
+  ) {
+    redirect("/");
+  }
+
   return (
-    <Container py="xl">
-      <Stack gap="lg">
-        <div>
-          <Title>Gardenerd</Title>
-          <Text c="dimmed" mt="xs">
-            Track what you grow, where you grow it, and what you learn along the
-            way.
-          </Text>
-        </div>
-
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-          <Card withBorder shadow="sm" radius="md">
-            <Stack gap="sm">
-              <Title order={2}>Containers</Title>
-              <Text c="dimmed">
-                Create and manage the pots or places where Growing Trials
-                happen.
-              </Text>
-              <Button component="a" href="/containers" variant="light">
-                Manage Containers
-              </Button>
-            </Stack>
-          </Card>
-
-          <Card withBorder shadow="sm" radius="md">
-            <Stack gap="sm">
-              <Title order={2}>Plants</Title>
-              <Text c="dimmed">
-                Create plant records with simple care notes for future growing.
-              </Text>
-              <Button component="a" href="/plants" variant="light">
-                Manage Plants
-              </Button>
-            </Stack>
-          </Card>
-
-          <Card withBorder shadow="sm" radius="md">
-            <Stack gap="sm">
-              <Title order={2}>Growing Trials</Title>
-              <Text c="dimmed">
-                Plan growing attempts by pairing one Plant with one Container.
-              </Text>
-              <Button component="a" href="/growing-trials" variant="light">
-                Manage Growing Trials
-              </Button>
-            </Stack>
-          </Card>
-        </SimpleGrid>
-      </Stack>
-    </Container>
+    <GrowingTrialsWorkspace
+      statusFilter={status === undefined ? "ACTIVE" : dashboardStatuses[status]}
+      variant="dashboard"
+    />
   );
 }

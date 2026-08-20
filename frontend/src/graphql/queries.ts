@@ -102,14 +102,34 @@ export const GROWING_TRIAL_FIELDS = gql`
 
 export const GROWING_TRIALS_QUERY = gql`
   ${GROWING_TRIAL_FIELDS}
-  query GrowingTrials($limit: Int!, $after: String) {
-    growingTrials(limit: $limit, after: $after) {
+  query GrowingTrials(
+    $limit: Int!
+    $after: String
+    $status: GrowingTrialStatusType
+  ) {
+    growingTrials(limit: $limit, after: $after, status: $status) {
       items {
         ...GrowingTrialFields
       }
       hasNextPage
       hasPreviousPage
       endCursor
+    }
+  }
+`;
+
+export const GROWING_TRIAL_SETUP_CONTEXT_QUERY = gql`
+  query GrowingTrialSetupContext {
+    plants: growingTrialPlantOptions(limit: 1) {
+      id
+    }
+    containers: growingTrialContainerOptions(limit: 1) {
+      id
+    }
+    trials: growingTrials(limit: 1) {
+      items {
+        id
+      }
     }
   }
 `;
