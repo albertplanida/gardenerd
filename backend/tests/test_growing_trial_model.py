@@ -141,6 +141,7 @@ def test_database_rejects_invalid_status_from_queryset_update(plant, container):
             {
                 'status': GrowingTrialStatus.COMPLETED,
                 'start_date': '2026-08-14',
+                'end_date': '2026-08-15',
             },
             (
                 'growing_trial_start_fields_together',
@@ -164,6 +165,7 @@ def test_database_rejects_invalid_status_from_queryset_update(plant, container):
                 'status': GrowingTrialStatus.COMPLETED,
                 'start_date': '2026-08-14',
                 'start_method': 'cutting',
+                'end_date': '2026-08-15',
             },
             ('growing_trial_valid_start_method',),
         ),
