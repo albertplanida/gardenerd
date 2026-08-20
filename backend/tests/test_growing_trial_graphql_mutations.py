@@ -1,8 +1,15 @@
+from datetime import timedelta
+
 import pytest
 from django.utils import timezone
 
 from apps.containers.models import Container
-from apps.growing_trials.models import GrowingTrial, GrowingTrialStatus
+from apps.growing_trials.models import (
+    GrowingTrial,
+    GrowingTrialStartMethod,
+    GrowingTrialStatus,
+)
+from apps.journal.models import JournalEvent, JournalEventEventType
 from apps.plants.models import Plant
 
 
@@ -508,6 +515,51 @@ def test_terminal_mutations_return_stable_domain_errors(
 
     assert error['message'] == message
     assert error['extensions']['code'] == code
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    'mutation',
+    [
+        'completeGrowingTrial',
+        'abandonGrowingTrial',
+        'updateGrowingTrialResult',
+    ],
+)
+def test_terminal_mutations_reject_end_date_before_latest_journal_event(
+    client,
+    mutation,
+):
+    today = timezone.localdate()
+    trial = GrowingTrial.objects.create(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+        status=GrowingTrialStatus.ACTIVE,
+        start_date=today - timedelta(days=2),
+        start_method=GrowingTrialStartMethod.SEED,
+    )
+    JournalEvent.objects.create(
+        growing_trial=trial,
+        event_type=JournalEventEventType.WATERED,
+        event_date=today,
+        note='Watered',
+    )
+    if mutation == 'updateGrowingTrialResult':
+        GrowingTrial.objects.filter(pk=trial.pk).update(
+            status=GrowingTrialStatus.COMPLETED,
+            end_date=today,
+        )
+
+    response = _post_terminal_mutation(
+        client,
+        mutation,
+        trial.pk,
+        endDate=(today - timedelta(days=1)).isoformat(),
+    )
+    error = response.json()['errors'][0]
+
+    assert error['message'] == 'End date cannot be before the latest Journal Event.'
+    assert error['extensions']['code'] == 'END_DATE_BEFORE_LATEST_JOURNAL_EVENT'
 
 
 @pytest.mark.django_db
