@@ -100,7 +100,7 @@ jobs:
           docker compose ps
           exit 1
 
-      - name: Start and reload a persisted Growing Trial
+      - name: Complete and reload a persisted Growing Trial
         run: |
           endpoint=http://127.0.0.1:3000/graphql
           plant_response=$(curl --fail --silent --show-error \
@@ -132,6 +132,17 @@ jobs:
             '.data.startGrowingTrial | select(.id == $id and .status == "ACTIVE")' \
             <<<"$start_response"
 
+          complete_payload=$(jq --null-input --compact-output \
+            --arg id "$trial_id" --arg end_date "$(date --utc +%F)" \
+            --arg result_summary "Docker persistence verified" \
+            '{query: "mutation($id: ID!, $endDate: Date!, $resultSummary: String) { completeGrowingTrial(id: $id, endDate: $endDate, resultSummary: $resultSummary, timeZone: \"UTC\") { id status endDate resultSummary } }", variables: {id: $id, endDate: $end_date, resultSummary: $result_summary}}')
+          complete_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' --data "$complete_payload" "$endpoint")
+          jq --exit-status \
+            --arg id "$trial_id" --arg end_date "$(date --utc +%F)" \
+            '.data.completeGrowingTrial | select(.id == $id and .status == "COMPLETED" and .endDate == $end_date and .resultSummary == "Docker persistence verified")' \
+            <<<"$complete_response"
+
           docker compose restart backend
           for attempt in {1..60}; do
             if curl --fail --silent --show-error \
@@ -144,11 +155,11 @@ jobs:
 
           persisted_response=$(curl --fail --silent --show-error \
             --header 'Content-Type: application/json' \
-            --data '{"query":"{ growingTrials { items { id status startDate } } }"}' \
+            --data '{"query":"{ growingTrials { items { id status startDate endDate resultSummary } } }"}' \
             "$endpoint")
           jq --exit-status \
-            --arg id "$trial_id" \
-            '.data.growingTrials.items[] | select(.id == $id and .status == "ACTIVE" and .startDate != null)' \
+            --arg id "$trial_id" --arg end_date "$(date --utc +%F)" \
+            '.data.growingTrials.items[] | select(.id == $id and .status == "COMPLETED" and .startDate != null and .endDate == $end_date and .resultSummary == "Docker persistence verified")' \
             <<<"$persisted_response"
 
       - name: Dump compose logs

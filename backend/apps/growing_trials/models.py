@@ -50,6 +50,8 @@ class GrowingTrial(models.Model):
         null=True,
         blank=True,
     )
+    end_date = models.DateField(null=True, blank=True)
+    result_summary = models.TextField(max_length=5000, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     objects = GrowingTrialManager()
@@ -87,6 +89,26 @@ class GrowingTrial(models.Model):
                     | models.Q(start_date__isnull=False, start_method__isnull=False)
                 ),
                 name='growing_trial_completed_has_start',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status__in=[
+                            GrowingTrialStatus.COMPLETED,
+                            GrowingTrialStatus.ABANDONED,
+                        ],
+                        end_date__isnull=False,
+                    )
+                    | models.Q(
+                        status__in=[
+                            GrowingTrialStatus.PLANNED,
+                            GrowingTrialStatus.ACTIVE,
+                        ],
+                        end_date__isnull=True,
+                        result_summary='',
+                    )
+                ),
+                name='growing_trial_terminal_fields_match_status',
             ),
             models.CheckConstraint(
                 condition=(

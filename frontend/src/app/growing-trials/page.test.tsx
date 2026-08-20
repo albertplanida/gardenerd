@@ -9,11 +9,14 @@ import {
 } from "@testing-library/react";
 
 import {
+  abandonGrowingTrial,
+  completeGrowingTrial,
   createGrowingTrial,
   listGrowingTrialContainerOptions,
   listGrowingTrialPlantOptions,
   listGrowingTrials,
   startGrowingTrial,
+  updateGrowingTrialResult,
 } from "@/graphql/growingTrials";
 
 import GrowingTrialsPage from "./page";
@@ -23,11 +26,14 @@ jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn(), hide: jest.fn() },
 }));
 jest.mock("@/graphql/growingTrials", () => ({
+  abandonGrowingTrial: jest.fn(),
+  completeGrowingTrial: jest.fn(),
   createGrowingTrial: jest.fn(),
   listGrowingTrials: jest.fn(),
   listGrowingTrialPlantOptions: jest.fn(),
   listGrowingTrialContainerOptions: jest.fn(),
   startGrowingTrial: jest.fn(),
+  updateGrowingTrialResult: jest.fn(),
 }));
 
 const emptyPage = {
@@ -45,6 +51,8 @@ const plannedTrial = {
   status: "PLANNED" as const,
   startDate: null,
   startMethod: null,
+  endDate: null,
+  resultSummary: "",
   createdAt: "2026-08-14T12:00:00Z",
   updatedAt: "2026-08-14T12:00:00Z",
 };
@@ -665,5 +673,320 @@ describe("GrowingTrialsPage", () => {
       screen.getByRole("button", { name: "Start Growing Trial" }),
     );
     await waitFor(() => expect(startGrowingTrial).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows lifecycle actions by status and terminal details", async () => {
+    jest.mocked(listGrowingTrials).mockResolvedValue({
+      ...emptyPage,
+      items: [
+        plannedTrial,
+        {
+          ...plannedTrial,
+          id: "11",
+          status: "ACTIVE",
+          startDate: "2026-08-10",
+          startMethod: "SEED",
+        },
+        {
+          ...plannedTrial,
+          id: "12",
+          status: "COMPLETED",
+          startDate: "2026-08-10",
+          startMethod: "SEED",
+          endDate: "2026-08-15",
+          resultSummary: "Harvested crisp radishes.",
+        },
+        {
+          ...plannedTrial,
+          id: "13",
+          status: "ABANDONED",
+          endDate: "2026-08-14",
+        },
+      ],
+    });
+
+    renderPage();
+    await screen.findAllByRole("heading", { name: "Radish in Pot 1" });
+
+    expect(
+      screen.getAllByRole("button", { name: "Start Radish in Pot 1" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Complete Radish in Pot 1" }),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByRole("button", { name: "Abandon Radish in Pot 1" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", {
+        name: "Edit result for Radish in Pot 1",
+      }),
+    ).toHaveLength(2);
+    expect(
+      document.querySelector('time[datetime="2026-08-15"]'),
+    ).toHaveTextContent(formatDateOnly("2026-08-15"));
+    expect(screen.getAllByText("Result summary")).toHaveLength(2);
+    fireEvent.click(screen.getAllByText("Result summary")[0]);
+    expect(screen.getByText("Harvested crisp radishes.")).toBeVisible();
+  });
+
+  it.each([
+    ["Complete Radish in Pot 1", "Complete Growing Trial"],
+    ["Abandon Radish in Pot 1", "Abandon Growing Trial"],
+  ])(
+    "opens %s with a browser-local date default",
+    async (buttonName, title) => {
+      const active = {
+        ...plannedTrial,
+        status: "ACTIVE" as const,
+        startDate: "2026-08-01",
+        startMethod: "SEED" as const,
+      };
+      jest
+        .mocked(listGrowingTrials)
+        .mockResolvedValue({ ...emptyPage, items: [active] });
+      renderPage();
+
+      fireEvent.click(await screen.findByRole("button", { name: buttonName }));
+
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+      const now = new Date();
+      const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      expect(screen.getByLabelText("End date")).toHaveValue(expected);
+      expect(screen.getByLabelText("End date")).toHaveAttribute(
+        "max",
+        expected,
+      );
+      expect(screen.getByLabelText("End date")).toHaveAttribute(
+        "min",
+        "2026-08-01",
+      );
+      expect(screen.getByLabelText("Result summary (optional)")).toHaveValue(
+        "",
+      );
+    },
+  );
+
+  it("validates end dates before submitting", async () => {
+    const active = {
+      ...plannedTrial,
+      status: "ACTIVE" as const,
+      startDate: "2026-08-10",
+      startMethod: "SEED" as const,
+    };
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [active] });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete Radish in Pot 1" }),
+    );
+    const date = screen.getByLabelText("End date");
+    fireEvent.change(date, { target: { value: "2026-08-09" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete Growing Trial" }),
+    );
+
+    expect(
+      screen.getByText("End date cannot be before the start date."),
+    ).toBeInTheDocument();
+    expect(date).toHaveFocus();
+    expect(completeGrowingTrial).not.toHaveBeenCalled();
+  });
+
+  it("rejects a normalized result summary over 5,000 characters", async () => {
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Abandon Radish in Pot 1" }),
+    );
+    const summary = screen.getByLabelText("Result summary (optional)");
+    fireEvent.change(summary, { target: { value: `  ${"x".repeat(5001)}  ` } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abandon Growing Trial" }),
+    );
+
+    expect(
+      screen.getByText("Result summary cannot exceed 5,000 characters."),
+    ).toBeInTheDocument();
+    expect(summary).toHaveFocus();
+    expect(abandonGrowingTrial).not.toHaveBeenCalled();
+  });
+
+  it("submits exact Complete variables, replaces one card, and restores focus", async () => {
+    const other = { ...plannedTrial, id: "11" };
+    const active = {
+      ...plannedTrial,
+      status: "ACTIVE" as const,
+      startDate: "2026-08-10",
+      startMethod: "SEED" as const,
+    };
+    const completed = {
+      ...active,
+      status: "COMPLETED" as const,
+      endDate: "2026-08-15",
+      resultSummary: "Strong harvest",
+    };
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValueOnce({ ...emptyPage, items: [active, other] })
+      .mockResolvedValueOnce({ ...emptyPage, items: [completed, other] });
+    jest.mocked(completeGrowingTrial).mockResolvedValue(completed);
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Complete Radish in Pot 1" }),
+    );
+    fireEvent.change(screen.getByLabelText("End date"), {
+      target: { value: "2026-08-15" },
+    });
+    fireEvent.change(screen.getByLabelText("Result summary (optional)"), {
+      target: { value: "Strong harvest" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Complete Growing Trial" }),
+    );
+
+    await waitFor(() =>
+      expect(completeGrowingTrial).toHaveBeenCalledWith(
+        "10",
+        "2026-08-15",
+        "Strong harvest",
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button", { name: "Start Radish in Pot 1" }),
+    ).toHaveLength(1);
+    await waitFor(() =>
+      expect(document.getElementById("growing-trial-10")).toHaveFocus(),
+    );
+  });
+
+  it("prepopulates terminal Edit and preserves status", async () => {
+    const abandoned = {
+      ...plannedTrial,
+      status: "ABANDONED" as const,
+      endDate: "2026-08-14",
+      resultSummary: "Pests damaged seedlings.",
+    };
+    const revised = {
+      ...abandoned,
+      endDate: "2026-08-15",
+      resultSummary: "Revised result",
+    };
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValueOnce({ ...emptyPage, items: [abandoned] })
+      .mockResolvedValueOnce({ ...emptyPage, items: [revised] });
+    jest.mocked(updateGrowingTrialResult).mockResolvedValue(revised);
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Edit result for Radish in Pot 1",
+      }),
+    );
+
+    expect(screen.getByLabelText("End date")).toHaveValue("2026-08-14");
+    expect(screen.getByLabelText("Result summary (optional)")).toHaveValue(
+      "Pests damaged seedlings.",
+    );
+    fireEvent.change(screen.getByLabelText("End date"), {
+      target: { value: "2026-08-15" },
+    });
+    fireEvent.change(screen.getByLabelText("Result summary (optional)"), {
+      target: { value: "Revised result" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Result" }));
+
+    await waitFor(() =>
+      expect(updateGrowingTrialResult).toHaveBeenCalledWith(
+        "10",
+        "2026-08-15",
+        "Revised result",
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+    );
+    expect(screen.getByText("Abandoned")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Complete Radish in Pot 1" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps terminal values after recoverable failure and prevents duplicate submission", async () => {
+    const active = {
+      ...plannedTrial,
+      status: "ACTIVE" as const,
+      startDate: "2026-08-10",
+      startMethod: "SEED" as const,
+    };
+    const pending = deferred<typeof active>();
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [active] });
+    jest
+      .mocked(abandonGrowingTrial)
+      .mockReturnValueOnce(pending.promise)
+      .mockRejectedValueOnce(new Error("network"));
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Abandon Radish in Pot 1" }),
+    );
+    fireEvent.change(screen.getByLabelText("Result summary (optional)"), {
+      target: { value: "Weather damage" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abandon Growing Trial" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abandon Growing Trial" }),
+    );
+    expect(abandonGrowingTrial).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await act(async () => pending.reject(new Error("network")));
+
+    expect(
+      await screen.findByText(
+        "Growing Trial could not be updated. Check your connection and try again.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Result summary (optional)")).toHaveValue(
+      "Weather damage",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abandon Growing Trial" }),
+    );
+    await waitFor(() => expect(abandonGrowingTrial).toHaveBeenCalledTimes(2));
+  });
+
+  it("closes and refreshes after a stale terminal conflict", async () => {
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
+    jest.mocked(abandonGrowingTrial).mockRejectedValue({
+      response: {
+        errors: [{ extensions: { code: "GROWING_TRIAL_NOT_ENDABLE" } }],
+      },
+    });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Abandon Radish in Pot 1" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Abandon Growing Trial" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Growing Trial was not updated",
+        message:
+          "This Growing Trial can no longer be abandoned. Refreshing the list.",
+      }),
+    );
+    await waitFor(() => expect(listGrowingTrials).toHaveBeenCalledTimes(2));
   });
 });

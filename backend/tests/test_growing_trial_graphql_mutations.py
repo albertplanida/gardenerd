@@ -75,6 +75,49 @@ def _post_start_growing_trial(client, trial_id, **variables):
     )
 
 
+def _post_terminal_mutation(client, mutation, trial_id, **variables):
+    values = {
+        'id': str(trial_id),
+        'endDate': timezone.localdate().isoformat(),
+        'resultSummary': None,
+        'timeZone': 'UTC',
+    }
+    values.update(variables)
+    return client.post(
+        '/graphql/',
+        data={
+            'query': f"""
+                mutation TerminalGrowingTrial(
+                    $id: ID!
+                    $endDate: Date!
+                    $resultSummary: String
+                    $timeZone: String!
+                ) {{
+                    {mutation}(
+                        id: $id
+                        endDate: $endDate
+                        resultSummary: $resultSummary
+                        timeZone: $timeZone
+                    ) {{
+                        id
+                        plant {{ id name }}
+                        container {{ id name }}
+                        status
+                        startDate
+                        startMethod
+                        endDate
+                        resultSummary
+                        createdAt
+                        updatedAt
+                    }}
+                }}
+            """,
+            'variables': values,
+        },
+        content_type='application/json',
+    )
+
+
 @pytest.mark.django_db
 def test_create_growing_trial_mutation_creates_planned_trial(client):
     plant = Plant.objects.create(name='Radish')
@@ -298,6 +341,257 @@ def test_start_growing_trial_logs_and_masks_unexpected_errors(
     )
 
     response = _post_start_growing_trial(client, trial.pk)
+    error = response.json()['errors'][0]
+
+    assert error['message'] == 'Internal server error.'
+    assert error['extensions']['code'] == 'INTERNAL_ERROR'
+    assert 'database secret' not in response.content.decode()
+    assert 'database secret' in caplog.text
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('mutation', 'initial_status', 'expected_status'),
+    [
+        ('completeGrowingTrial', 'active', 'COMPLETED'),
+        ('abandonGrowingTrial', 'active', 'ABANDONED'),
+        ('abandonGrowingTrial', 'planned', 'ABANDONED'),
+    ],
+)
+def test_terminal_mutations_return_complete_updated_card(
+    client,
+    mutation,
+    initial_status,
+    expected_status,
+):
+    plant = Plant.objects.create(name='Radish')
+    container = Container.objects.create(name='Pot 1')
+    trial = GrowingTrial.objects.create_planned(plant=plant, container=container)
+    if initial_status == 'active':
+        _post_start_growing_trial(
+            client,
+            trial.pk,
+            startDate='2026-08-01',
+        )
+
+    response = _post_terminal_mutation(
+        client,
+        mutation,
+        trial.pk,
+        resultSummary='  Good result.  ',
+    )
+    trial.refresh_from_db()
+
+    assert response.status_code == 200
+    assert response.json()['data'][mutation] == {
+        'id': str(trial.id),
+        'plant': {'id': str(plant.id), 'name': 'Radish'},
+        'container': {'id': str(container.id), 'name': 'Pot 1'},
+        'status': expected_status,
+        'startDate': '2026-08-01' if initial_status == 'active' else None,
+        'startMethod': 'SEED' if initial_status == 'active' else None,
+        'endDate': timezone.localdate().isoformat(),
+        'resultSummary': 'Good result.',
+        'createdAt': trial.created_at.isoformat(),
+        'updatedAt': trial.updated_at.isoformat(),
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('status', ['completed', 'abandoned'])
+def test_update_growing_trial_result_returns_status_unchanged(client, status):
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+    if status == 'completed':
+        _post_start_growing_trial(client, trial.pk, startDate='2026-08-01')
+        _post_terminal_mutation(client, 'completeGrowingTrial', trial.pk)
+    else:
+        _post_terminal_mutation(client, 'abandonGrowingTrial', trial.pk)
+
+    response = _post_terminal_mutation(
+        client,
+        'updateGrowingTrialResult',
+        trial.pk,
+        endDate='2026-08-02',
+        resultSummary='Revised',
+    )
+
+    result = response.json()['data']['updateGrowingTrialResult']
+    assert result['status'] == status.upper()
+    assert result['endDate'] == '2026-08-02'
+    assert result['resultSummary'] == 'Revised'
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('mutation', 'prepare', 'variables', 'code', 'message'),
+    [
+        (
+            'completeGrowingTrial',
+            'planned',
+            {},
+            'GROWING_TRIAL_NOT_ACTIVE',
+            'Only active Growing Trials can be completed.',
+        ),
+        (
+            'abandonGrowingTrial',
+            'terminal',
+            {},
+            'GROWING_TRIAL_NOT_ENDABLE',
+            'Only planned or active Growing Trials can be abandoned.',
+        ),
+        (
+            'updateGrowingTrialResult',
+            'planned',
+            {},
+            'GROWING_TRIAL_NOT_TERMINAL',
+            'Only completed or abandoned Growing Trials can be edited.',
+        ),
+        (
+            'abandonGrowingTrial',
+            'planned',
+            {'id': 'not-an-id'},
+            'GROWING_TRIAL_NOT_FOUND',
+            'Growing Trial not found.',
+        ),
+        (
+            'abandonGrowingTrial',
+            'planned',
+            {'endDate': '2999-01-01'},
+            'END_DATE_IN_FUTURE',
+            'End date cannot be in the future.',
+        ),
+        (
+            'completeGrowingTrial',
+            'active',
+            {'endDate': '2026-07-31'},
+            'END_DATE_BEFORE_START',
+            'End date cannot be before the start date.',
+        ),
+        (
+            'abandonGrowingTrial',
+            'planned',
+            {'timeZone': 'Invalid/Zone'},
+            'INVALID_TIME_ZONE',
+            'Browser time zone is invalid; refresh and try again.',
+        ),
+        (
+            'abandonGrowingTrial',
+            'planned',
+            {'resultSummary': 'x' * 5001},
+            'INVALID_RESULT_SUMMARY',
+            'Result summary cannot exceed 5,000 characters.',
+        ),
+    ],
+)
+def test_terminal_mutations_return_stable_domain_errors(
+    client,
+    mutation,
+    prepare,
+    variables,
+    code,
+    message,
+):
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+    if prepare == 'active':
+        _post_start_growing_trial(client, trial.pk, startDate='2026-08-01')
+    elif prepare == 'terminal':
+        _post_terminal_mutation(client, 'abandonGrowingTrial', trial.pk)
+
+    response = _post_terminal_mutation(client, mutation, trial.pk, **variables)
+    error = response.json()['errors'][0]
+
+    assert error['message'] == message
+    assert error['extensions']['code'] == code
+
+
+@pytest.mark.django_db
+def test_update_growing_trial_result_does_not_accept_status(client):
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+
+    response = client.post(
+        '/graphql/',
+        data={
+            'query': """
+                mutation UpdateGrowingTrialResult(
+                    $id: ID!
+                    $endDate: Date!
+                    $timeZone: String!
+                    $status: GrowingTrialStatusType!
+                ) {
+                    updateGrowingTrialResult(
+                        id: $id
+                        endDate: $endDate
+                        timeZone: $timeZone
+                        status: $status
+                    ) { id }
+                }
+            """,
+            'variables': {
+                'id': str(trial.pk),
+                'endDate': timezone.localdate().isoformat(),
+                'timeZone': 'UTC',
+                'status': 'COMPLETED',
+            },
+        },
+        content_type='application/json',
+    )
+
+    assert "Unknown argument 'status'" in response.json()['errors'][0]['message']
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('mutation', ['completeGrowingTrial', 'abandonGrowingTrial'])
+def test_terminal_mutations_reject_malformed_date(client, mutation):
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+
+    response = _post_terminal_mutation(
+        client,
+        mutation,
+        trial.pk,
+        endDate='not-a-date',
+    )
+
+    assert 'Value cannot represent a Date' in response.json()['errors'][0]['message']
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ('mutation', 'service_name'),
+    [
+        ('completeGrowingTrial', 'complete_growing_trial'),
+        ('abandonGrowingTrial', 'abandon_growing_trial'),
+        ('updateGrowingTrialResult', 'update_growing_trial_result'),
+    ],
+)
+def test_terminal_mutations_log_and_mask_unexpected_errors(
+    client,
+    monkeypatch,
+    caplog,
+    mutation,
+    service_name,
+):
+    trial = GrowingTrial.objects.create_planned(
+        plant=Plant.objects.create(name='Radish'),
+        container=Container.objects.create(name='Pot 1'),
+    )
+    monkeypatch.setattr(
+        f'apps.growing_trials.graphql.GrowingTrial.mutations.{service_name}',
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError('database secret')),
+    )
+
+    response = _post_terminal_mutation(client, mutation, trial.pk)
     error = response.json()['errors'][0]
 
     assert error['message'] == 'Internal server error.'

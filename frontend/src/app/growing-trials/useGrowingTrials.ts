@@ -110,7 +110,7 @@ export function useGrowingTrials() {
     return requestPage(cursorStack.at(-1) ?? null, "refresh");
   }
 
-  function acceptStarted(trial: GrowingTrial) {
+  function acceptUpdated(trial: GrowingTrial) {
     requestSequence.current += 1;
     setPage((current) => ({
       ...current,
@@ -127,7 +127,7 @@ export function useGrowingTrials() {
     previous,
     retry,
     acceptCreated,
-    acceptStarted,
+    acceptUpdated,
     retryRefresh,
   };
 }

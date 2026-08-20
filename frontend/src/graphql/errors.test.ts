@@ -12,6 +12,21 @@ describe("graphqlErrorCode", () => {
   });
 
   it.each([
+    "GROWING_TRIAL_NOT_ACTIVE",
+    "GROWING_TRIAL_NOT_ENDABLE",
+    "GROWING_TRIAL_NOT_TERMINAL",
+    "END_DATE_IN_FUTURE",
+    "END_DATE_BEFORE_START",
+    "INVALID_RESULT_SUMMARY",
+  ])("recognizes the terminal trial code %s", (code) => {
+    expect(
+      graphqlErrorCode({
+        response: { errors: [{ extensions: { code } }] },
+      }),
+    ).toBe(code);
+  });
+
+  it.each([
     new Error("network"),
     { response: { errors: [{ extensions: { code: "NEW_SERVER_CODE" } }] } },
     { response: { errors: [] } },

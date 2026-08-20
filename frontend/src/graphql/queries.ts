@@ -93,6 +93,8 @@ export const GROWING_TRIAL_FIELDS = gql`
     status
     startDate
     startMethod
+    endDate
+    resultSummary
     createdAt
     updatedAt
   }
@@ -151,6 +153,63 @@ export const START_GROWING_TRIAL_MUTATION = gql`
       id: $id
       startDate: $startDate
       startMethod: $startMethod
+      timeZone: $timeZone
+    ) {
+      ...GrowingTrialFields
+    }
+  }
+`;
+
+export const COMPLETE_GROWING_TRIAL_MUTATION = gql`
+  ${GROWING_TRIAL_FIELDS}
+  mutation CompleteGrowingTrial(
+    $id: ID!
+    $endDate: Date!
+    $resultSummary: String
+    $timeZone: String!
+  ) {
+    completeGrowingTrial(
+      id: $id
+      endDate: $endDate
+      resultSummary: $resultSummary
+      timeZone: $timeZone
+    ) {
+      ...GrowingTrialFields
+    }
+  }
+`;
+
+export const ABANDON_GROWING_TRIAL_MUTATION = gql`
+  ${GROWING_TRIAL_FIELDS}
+  mutation AbandonGrowingTrial(
+    $id: ID!
+    $endDate: Date!
+    $resultSummary: String
+    $timeZone: String!
+  ) {
+    abandonGrowingTrial(
+      id: $id
+      endDate: $endDate
+      resultSummary: $resultSummary
+      timeZone: $timeZone
+    ) {
+      ...GrowingTrialFields
+    }
+  }
+`;
+
+export const UPDATE_GROWING_TRIAL_RESULT_MUTATION = gql`
+  ${GROWING_TRIAL_FIELDS}
+  mutation UpdateGrowingTrialResult(
+    $id: ID!
+    $endDate: Date!
+    $resultSummary: String
+    $timeZone: String!
+  ) {
+    updateGrowingTrialResult(
+      id: $id
+      endDate: $endDate
+      resultSummary: $resultSummary
       timeZone: $timeZone
     ) {
       ...GrowingTrialFields
