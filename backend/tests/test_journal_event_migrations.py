@@ -30,6 +30,12 @@ def test_initial_journal_migration_creates_constrained_event_table():
         executor.migrate(migrate_to)
         new_apps = executor.loader.project_state(migrate_to).apps
         JournalEvent = new_apps.get_model('journal', 'JournalEvent')
+        assert [(index.name, index.fields) for index in JournalEvent._meta.indexes] == [
+            (
+                'journal_event_timeline_idx',
+                ['growing_trial', '-event_date', '-created_at', '-id'],
+            )
+        ]
         event = JournalEvent.objects.create(
             growing_trial_id=trial.pk,
             event_type='watered',

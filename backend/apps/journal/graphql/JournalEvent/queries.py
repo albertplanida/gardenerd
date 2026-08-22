@@ -115,14 +115,8 @@ def _journal_event_page(
         )
 
     trial = _get_trial(growing_trial_id)
-    queryset = (
-        JournalEvent.objects.filter(growing_trial=trial)
-        .select_related(
-            'growing_trial',
-            'growing_trial__plant',
-            'growing_trial__container',
-        )
-        .order_by('-event_date', '-created_at', '-id')
+    queryset = JournalEvent.objects.filter(growing_trial=trial).order_by(
+        '-event_date', '-created_at', '-id'
     )
     if after is not None:
         event_date, created_at, event_id = _decode_cursor(after)
@@ -141,6 +135,5 @@ def _journal_event_page(
     return JournalEventPage(
         items=items,
         has_next_page=len(rows) > limit,
-        has_previous_page=after is not None,
         end_cursor=_encode_cursor(items[-1]) if items else None,
     )

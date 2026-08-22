@@ -70,7 +70,18 @@ class Migration(migrations.Migration):
                         ),
                         name='journal_event_valid_event_type',
                     )
-                ]
+                ],
+                'indexes': [
+                    models.Index(
+                        fields=[
+                            'growing_trial',
+                            '-event_date',
+                            '-created_at',
+                            '-id',
+                        ],
+                        name='journal_event_timeline_idx',
+                    )
+                ],
             },
         ),
     ]

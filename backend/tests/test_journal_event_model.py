@@ -10,7 +10,11 @@ from apps.growing_trials.models import (
     GrowingTrialStartMethod,
     GrowingTrialStatus,
 )
-from apps.journal.models import JournalEvent, JournalEventEventType
+from apps.journal.models import (
+    INVALID_JOURNAL_NOTE_MESSAGE,
+    JournalEvent,
+    JournalEventEventType,
+)
 from apps.plants.models import Plant
 
 
@@ -41,15 +45,17 @@ def test_journal_event_persists_every_supported_type(trial, event_type):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize('note', ['', ' \n\t ', 'x' * 5001])
+@pytest.mark.parametrize('note', ['', ' \n\t ', 'x' * 5001, None, 123])
 def test_journal_event_rejects_invalid_notes(trial, note):
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as error:
         JournalEvent.objects.create(
             growing_trial=trial,
             event_type=JournalEventEventType.WATERED,
             event_date=date(2026, 8, 2),
             note=note,
         )
+
+    assert error.value.message_dict == {'note': [INVALID_JOURNAL_NOTE_MESSAGE]}
 
 
 @pytest.mark.django_db
@@ -113,3 +119,12 @@ def test_deleting_trial_cascades_to_journal_events(trial):
     trial.delete()
 
     assert JournalEvent.objects.count() == 0
+
+
+def test_journal_event_timeline_index_metadata_is_exact():
+    assert [(index.name, index.fields) for index in JournalEvent._meta.indexes] == [
+        (
+            'journal_event_timeline_idx',
+            ['growing_trial', '-event_date', '-created_at', '-id'],
+        )
+    ]

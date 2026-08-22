@@ -2,6 +2,8 @@ import base64
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from apps.containers.models import Container
 from apps.growing_trials.models import (
@@ -11,6 +13,7 @@ from apps.growing_trials.models import (
 )
 from apps.journal.graphql.JournalEvent.queries import (
     INVALID_JOURNAL_EVENT_CURSOR_MESSAGE,
+    _journal_event_page,
 )
 from apps.journal.models import JournalEvent, JournalEventEventType
 from apps.plants.models import Plant
@@ -43,7 +46,6 @@ def _post_events(client, trial_id, variables=None):
                             updatedAt
                         }
                         hasNextPage
-                        hasPreviousPage
                         endCursor
                     }
                 }
@@ -80,7 +82,6 @@ def test_timeline_reads_every_trial_status_and_empty_pages(client, trial, status
     assert page == {
         'items': [],
         'hasNextPage': False,
-        'hasPreviousPage': False,
         'endCursor': None,
     }
 
@@ -116,7 +117,48 @@ def test_timeline_orders_and_paginates_all_ordering_keys(client, trial):
     ]
     assert first['hasNextPage'] is True
     assert second['hasNextPage'] is False
-    assert second['hasPreviousPage'] is True
+
+
+@pytest.mark.django_db
+def test_timeline_page_query_does_not_join_related_tables(trial):
+    JournalEvent.objects.create(
+        growing_trial=trial,
+        event_type=JournalEventEventType.WATERED,
+        event_date=date(2026, 8, 2),
+        note='Watered',
+    )
+
+    with CaptureQueriesContext(connection) as queries:
+        page = _journal_event_page(trial.pk, 20, None)
+
+    assert len(page.items) == 1
+    timeline_sql = next(
+        query['sql']
+        for query in queries.captured_queries
+        if 'journal_journalevent' in query['sql'].lower()
+    )
+    assert ' JOIN ' not in timeline_sql.upper()
+
+
+@pytest.mark.django_db
+def test_postgresql_can_use_timeline_index(trial):
+    if connection.vendor != 'postgresql':
+        pytest.skip('PostgreSQL query planner behavior only')
+    JournalEvent.objects.create(
+        growing_trial=trial,
+        event_type=JournalEventEventType.WATERED,
+        event_date=date(2026, 8, 2),
+        note='Watered',
+    )
+    queryset = JournalEvent.objects.filter(growing_trial=trial).order_by(
+        '-event_date', '-created_at', '-id'
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute('SET LOCAL enable_seqscan = off')
+    plan = queryset.explain()
+
+    assert 'journal_event_timeline_idx' in plan
 
 
 @pytest.mark.django_db

@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.growing_trials.models import GrowingTrial, GrowingTrialStatus
 from apps.journal.models import (
-    JOURNAL_NOTE_MAX_LENGTH,
+    INVALID_JOURNAL_NOTE_MESSAGE,
     JournalEvent,
     JournalEventEventType,
 )
@@ -31,13 +31,6 @@ def _error(code: str, message: str) -> JournalEventError:
     return JournalEventError(code, message)
 
 
-def _event_type(event_type: str) -> JournalEventEventType:
-    try:
-        return JournalEventEventType(event_type)
-    except (TypeError, ValueError) as exc:
-        raise ValueError('Unsupported Journal Event type') from exc
-
-
 def _browser_time_zone(time_zone: str) -> ZoneInfo:
     try:
         return ZoneInfo(time_zone)
@@ -48,19 +41,13 @@ def _browser_time_zone(time_zone: str) -> ZoneInfo:
         ) from exc
 
 
-def _normalized_note(note: str) -> str:
-    if not isinstance(note, str):
-        raise _error(
-            INVALID_JOURNAL_NOTE,
-            'Note is required and cannot exceed 5,000 characters.',
-        )
-    normalized = note.strip()
-    if not normalized or len(normalized) > JOURNAL_NOTE_MAX_LENGTH:
-        raise _error(
-            INVALID_JOURNAL_NOTE,
-            'Note is required and cannot exceed 5,000 characters.',
-        )
-    return normalized
+def _save_event(event: JournalEvent, **kwargs) -> None:
+    try:
+        event.save(**kwargs)
+    except ValidationError as exc:
+        if set(getattr(exc, 'error_dict', {})) == {'note'}:
+            raise _error(INVALID_JOURNAL_NOTE, INVALID_JOURNAL_NOTE_MESSAGE) from exc
+        raise
 
 
 def _locked_trial(trial_id: object) -> GrowingTrial:
@@ -121,25 +108,24 @@ def _validate_event_date(
 def create_journal_event(
     *,
     trial_id: object,
-    event_type: str,
+    event_type: JournalEventEventType,
     event_date: date,
     note: str,
     time_zone: str,
 ) -> JournalEvent:
-    parsed_event_type = _event_type(event_type)
     browser_time_zone = _browser_time_zone(time_zone)
-    normalized_note = _normalized_note(note)
 
     with transaction.atomic():
         trial = _locked_trial(trial_id)
         _validate_active(trial)
         _validate_event_date(trial, event_date, browser_time_zone)
-        event = JournalEvent.objects.create(
+        event = JournalEvent(
             growing_trial=trial,
-            event_type=parsed_event_type,
+            event_type=event_type,
             event_date=event_date,
-            note=normalized_note,
+            note=note,
         )
+        _save_event(event)
 
     return event
 
@@ -147,25 +133,26 @@ def create_journal_event(
 def update_journal_event(
     *,
     event_id: object,
-    event_type: str,
+    event_type: JournalEventEventType,
     event_date: date,
     note: str,
     time_zone: str,
 ) -> JournalEvent:
     trial_id = _event_trial_id(event_id)
-    parsed_event_type = _event_type(event_type)
     browser_time_zone = _browser_time_zone(time_zone)
-    normalized_note = _normalized_note(note)
 
     with transaction.atomic():
         trial = _locked_trial(trial_id)
         event = _locked_event(event_id)
         _validate_active(trial)
         _validate_event_date(trial, event_date, browser_time_zone)
-        event.event_type = parsed_event_type
+        event.event_type = event_type
         event.event_date = event_date
-        event.note = normalized_note
-        event.save(update_fields=['event_type', 'event_date', 'note', 'updated_at'])
+        event.note = note
+        _save_event(
+            event,
+            update_fields=['event_type', 'event_date', 'note', 'updated_at'],
+        )
 
     event.refresh_from_db()
     return event

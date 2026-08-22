@@ -113,6 +113,30 @@ def test_create_round_trips_every_explicit_event_type(client, trial, event_type)
 
 
 @pytest.mark.django_db
+def test_invalid_event_type_is_rejected_before_service(client, trial, monkeypatch):
+    service_called = False
+
+    def unexpected_service(**kwargs):
+        nonlocal service_called
+        service_called = True
+
+    monkeypatch.setattr(
+        'apps.journal.graphql.JournalEvent.mutations.create_journal_event',
+        unexpected_service,
+    )
+
+    response = _post_mutation(
+        client,
+        'createJournalEvent',
+        _variables(trial, eventType='UNSUPPORTED'),
+    )
+
+    assert response.json()['data'] is None
+    assert 'does not exist in' in response.json()['errors'][0]['message']
+    assert service_called is False
+
+
+@pytest.mark.django_db
 def test_update_and_delete_return_complete_results(client, trial):
     event = JournalEvent.objects.create(
         growing_trial=trial,

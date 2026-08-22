@@ -1,5 +1,8 @@
 import pytest
 
+from apps.journal.graphql.JournalEvent.types import (
+    JournalEventEventType as GraphQLJournalEventEventType,
+)
 from apps.journal.models import JournalEventEventType
 
 
@@ -31,7 +34,6 @@ def test_schema_exposes_journal_event_types_query_and_mutations(client):
     assert {field['name'] for field in data['pageType']['fields']} == {
         'items',
         'hasNextPage',
-        'hasPreviousPage',
         'endCursor',
     }
     assert 'journalEvents' in {field['name'] for field in data['queryType']['fields']}
@@ -40,3 +42,10 @@ def test_schema_exposes_journal_event_types_query_and_mutations(client):
         'updateJournalEvent',
         'deleteJournalEvent',
     } <= {field['name'] for field in data['mutationType']['fields']}
+
+
+def test_graphql_event_type_is_the_django_text_choices_enum():
+    assert GraphQLJournalEventEventType is JournalEventEventType
+    assert [(member.name, member.value) for member in GraphQLJournalEventEventType] == [
+        (member.name, member.value) for member in JournalEventEventType
+    ]

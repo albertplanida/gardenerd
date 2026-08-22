@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 from threading import Barrier
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.db import connection, connections
 
 from apps.containers.models import Container
@@ -165,6 +166,42 @@ def test_journal_mutations_return_stable_errors_without_changes(
     assert error.value.code == code
     event.refresh_from_db()
     assert (event.event_type, event.event_date, event.note) == original
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize('operation', ['create', 'update'])
+@pytest.mark.parametrize('note', ['', ' \n\t ', 'x' * 5001, None, 123])
+def test_services_translate_every_invalid_note_shape(active_trial, operation, note):
+    event = _create(active_trial)
+    original = (event.event_type, event.event_date, event.note)
+
+    with pytest.raises(JournalEventError) as error:
+        if operation == 'create':
+            _create(active_trial, note=note)
+        else:
+            _update(event, note=note)
+
+    assert error.value.code == INVALID_JOURNAL_NOTE
+    assert str(error.value) == 'Note is required and cannot exceed 5,000 characters.'
+    assert JournalEvent.objects.count() == 1
+    event.refresh_from_db()
+    assert (event.event_type, event.event_date, event.note) == original
+
+
+@pytest.mark.django_db
+def test_service_does_not_translate_unrelated_model_validation(
+    active_trial, monkeypatch
+):
+    def invalid_event_date(self):
+        raise ValidationError({'event_date': 'Unrelated model validation.'})
+
+    monkeypatch.setattr(JournalEvent, 'clean', invalid_event_date)
+
+    with pytest.raises(ValidationError) as error:
+        _create(active_trial)
+
+    assert error.value.message_dict == {'event_date': ['Unrelated model validation.']}
+    assert not JournalEvent.objects.exists()
 
 
 @pytest.mark.django_db

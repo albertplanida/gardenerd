@@ -1,26 +1,16 @@
-from enum import Enum
-
 import strawberry
 import strawberry_django
 
 from apps.growing_trials.graphql.GrowingTrial.types import GrowingTrialType
-from apps.journal.models import JournalEvent
+from apps.journal import models
+
+JournalEventEventType = strawberry.enum(
+    models.JournalEventEventType,
+    name='JournalEventEventType',
+)
 
 
-@strawberry.enum
-class JournalEventEventType(Enum):
-    PLANTED = 'planted'
-    WATERED = 'watered'
-    GERMINATED = 'germinated'
-    FERTILIZED = 'fertilized'
-    PRUNED = 'pruned'
-    HARVESTED = 'harvested'
-    PROBLEM_NOTICED = 'problem_noticed'
-    PHOTO_TAKEN = 'photo_taken'
-    GENERAL_OBSERVATION = 'general_observation'
-
-
-@strawberry_django.type(JournalEvent)
+@strawberry_django.type(models.JournalEvent)
 class JournalEventType:
     id: strawberry.auto
     growing_trial: GrowingTrialType
@@ -38,5 +28,4 @@ class JournalEventType:
 class JournalEventPage:
     items: list[JournalEventType]
     has_next_page: bool
-    has_previous_page: bool
     end_cursor: str | None
