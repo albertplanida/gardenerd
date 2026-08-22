@@ -34,6 +34,7 @@ type GrowingTrialListProps = {
   onAbandon: (trial: GrowingTrial) => void;
   onEditResult: (trial: GrowingTrial) => void;
   onRefreshTrials: () => Promise<unknown>;
+  emptyContent?: ReactNode;
 };
 
 export function GrowingTrialList({
@@ -49,6 +50,7 @@ export function GrowingTrialList({
   onAbandon,
   onEditResult,
   onRefreshTrials,
+  emptyContent,
 }: GrowingTrialListProps) {
   if (status === "loading") {
     return (
