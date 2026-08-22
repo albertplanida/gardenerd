@@ -260,7 +260,6 @@ export const JOURNAL_EVENTS_QUERY = gql`
         ...JournalEventFields
       }
       hasNextPage
-      hasPreviousPage
       endCursor
     }
   }

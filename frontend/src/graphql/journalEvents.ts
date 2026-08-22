@@ -32,7 +32,6 @@ export type JournalEvent = {
 export type JournalEventPage = {
   items: JournalEvent[];
   hasNextPage: boolean;
-  hasPreviousPage: boolean;
   endCursor: string | null;
 };
 

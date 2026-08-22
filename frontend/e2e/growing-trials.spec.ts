@@ -47,6 +47,7 @@ type MockGraphqlOptions = {
   initialJournalEvents?: Record<string, MockJournalEvent[]>;
   journalMutationErrors?: string[];
   journalQueryFailures?: number;
+  journalLoadMoreFailures?: number;
 };
 
 const graphqlRoute = /\/graphql\/?(\?.*)?$/;
@@ -91,6 +92,7 @@ async function mockGrowingTrialGraphql(
     initialJournalEvents = {},
     journalMutationErrors = [],
     journalQueryFailures = 0,
+    journalLoadMoreFailures = 0,
   }: MockGraphqlOptions = {},
 ) {
   const trials = [...initialTrials].sort((a, b) => Number(b.id) - Number(a.id));
@@ -116,6 +118,7 @@ async function mockGrowingTrialGraphql(
   let remainingSaveFailures = saveFailures;
   let hasCreated = false;
   let remainingJournalQueryFailures = journalQueryFailures;
+  let remainingJournalLoadMoreFailures = journalLoadMoreFailures;
 
   await page.route(graphqlRoute, async (route) => {
     const rawBody = route.request().postData() ?? "{}";
@@ -222,8 +225,12 @@ async function mockGrowingTrialGraphql(
 
     if (operationName === "JournalEvents") {
       journalRequests.push({ operationName, variables });
-      if (remainingJournalQueryFailures > 0) {
-        remainingJournalQueryFailures -= 1;
+      const loadMoreFailed =
+        variables.after !== null && remainingJournalLoadMoreFailures > 0;
+      if (remainingJournalQueryFailures > 0 || loadMoreFailed) {
+        if (remainingJournalQueryFailures > 0)
+          remainingJournalQueryFailures -= 1;
+        if (loadMoreFailed) remainingJournalLoadMoreFailures -= 1;
         await route.fulfill({
           contentType: "application/json",
           json: { errors: [{ message: "Journal Events unavailable" }] },
@@ -260,7 +267,6 @@ async function mockGrowingTrialGraphql(
             journalEvents: {
               items,
               hasNextPage: start + limit < events.length,
-              hasPreviousPage: Boolean(after),
               endCursor: items.length
                 ? `journal-cursor:${items[items.length - 1].id}`
                 : null,
@@ -859,10 +865,6 @@ test("creates, edits, and deletes a Journal Event with exact variables", async (
       },
     },
     {
-      operationName: "JournalEvents",
-      variables: { growingTrialId: "7", limit: 20, after: null },
-    },
-    {
       operationName: "UpdateJournalEvent",
       variables: {
         id: "1",
@@ -873,16 +875,8 @@ test("creates, edits, and deletes a Journal Event with exact variables", async (
       },
     },
     {
-      operationName: "JournalEvents",
-      variables: { growingTrialId: "7", limit: 20, after: null },
-    },
-    {
       operationName: "DeleteJournalEvent",
       variables: { id: "1" },
-    },
-    {
-      operationName: "JournalEvents",
-      variables: { growingTrialId: "7", limit: 20, after: null },
     },
   ]);
 });
@@ -926,6 +920,46 @@ test("loads older Journal Events on Pixel 5 without horizontal overflow", async 
   ).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   );
+});
+
+test("retries a failed older Journal page without replacing loaded events", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium");
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-07-01",
+    startMethod: "SEED" as const,
+  };
+  const events = Array.from({ length: 21 }, (_, index) => ({
+    id: String(21 - index),
+    eventType: "GENERAL_OBSERVATION" as const,
+    eventDate: "2026-08-20",
+    note: index === 0 ? "Newest retained event" : `Older event ${index}`,
+    createdAt: `2026-08-20T${String(23 - index).padStart(2, "0")}:00:00Z`,
+    updatedAt: "2026-08-20T12:00:00Z",
+  }));
+  const { journalRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+    initialJournalEvents: { "7": events },
+    journalLoadMoreFailures: 1,
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Show Journal" }).click();
+  await page.getByRole("button", { name: "Load more Journal Events" }).click();
+
+  await expect(
+    page.getByText("Older Journal Events could not be loaded."),
+  ).toBeVisible();
+  await expect(page.getByText("Newest retained event")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Retry loading older Journal Events" })
+    .click();
+  await expect(page.getByText("Older event 20")).toBeVisible();
+  expect(
+    journalRequests.slice(-2).map((request) => request.variables.after),
+  ).toEqual(["journal-cursor:2", "journal-cursor:2"]);
 });
 
 test("keeps planned and terminal Journal timelines read-only", async ({

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -33,6 +33,12 @@ type JournalEventTimelineProps = {
   onRefreshTrials: () => Promise<unknown>;
 };
 
+type PendingMutation =
+  | { kind: "create" }
+  | { kind: "update"; eventId: string }
+  | { kind: "delete"; eventId: string }
+  | null;
+
 const journalErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
   EVENT_DATE_BEFORE_TRIAL_START:
     "Event date cannot be before the Growing Trial start date.",
@@ -54,14 +60,20 @@ export function JournalEventTimeline({
   const [formEvent, setFormEvent] = useState<JournalEvent | null>(null);
   const [formOpened, setFormOpened] = useState(false);
   const [formSession, setFormSession] = useState(0);
-  const [saving, setSaving] = useState(false);
+  const [pendingMutation, setPendingMutation] = useState<PendingMutation>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteEvent, setDeleteEvent] = useState<JournalEvent | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const submitting = useRef(false);
   const focusTarget = useRef<HTMLElement | null>(null);
+  const mounted = useRef(true);
   const regionId = `journal-${trial.id}`;
   const active = trial.status === "ACTIVE";
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   function restoreFocus() {
     const target = focusTarget.current;
@@ -119,35 +131,43 @@ export function JournalEventTimeline({
       color: "yellow",
       autoClose: 8000,
     });
-    await Promise.all([onRefreshTrials(), timeline.firstPage("reconcile")]);
+    await Promise.all([onRefreshTrials(), timeline.firstPage("refresh")]);
   }
 
   async function handleSave(values: JournalEventFormValues) {
-    if (submitting.current) return;
-    submitting.current = true;
-    setSaving(true);
+    if (pendingMutation) return;
+    const editedEvent = formEvent;
+    setPendingMutation(
+      editedEvent
+        ? { kind: "update", eventId: editedEvent.id }
+        : { kind: "create" },
+    );
     setSaveError(null);
     try {
       const variables = {
         ...values,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
-      const saved = formEvent
-        ? await updateJournalEvent(formEvent.id, variables)
+      const saved = editedEvent
+        ? await updateJournalEvent(editedEvent.id, variables)
         : await createJournalEvent(trial.id, variables);
-      const reconcile = formEvent
-        ? timeline.acceptUpdated(saved)
+      if (!mounted.current) return;
+      const reconcile = editedEvent
+        ? timeline.acceptUpdated(saved, editedEvent.eventDate)
         : timeline.acceptCreated(saved);
       setFormOpened(false);
       notifications.show({
-        title: formEvent ? "Journal Event updated" : "Journal Event added",
+        title: editedEvent ? "Journal Event updated" : "Journal Event added",
         message: `${journalEventTypeLabels[saved.eventType]} on ${formatDateOnly(saved.eventDate)}`,
         color: "green",
         autoClose: 5000,
       });
       const result = await reconcile;
-      if (typeof result === "object") notifyReconciliationFailure();
+      if (mounted.current && typeof result === "object") {
+        notifyReconciliationFailure();
+      }
     } catch (error) {
+      if (!mounted.current) return;
       const code = graphqlErrorCode(error);
       if (
         code === "GROWING_TRIAL_NOT_ACTIVE" ||
@@ -158,18 +178,17 @@ export function JournalEventTimeline({
         setSaveError((code && journalErrorMessages[code]) || genericError);
       }
     } finally {
-      submitting.current = false;
-      setSaving(false);
+      if (mounted.current) setPendingMutation(null);
     }
   }
 
   async function handleDelete() {
-    if (!deleteEvent || submitting.current) return;
-    submitting.current = true;
-    setDeleting(true);
+    if (!deleteEvent || pendingMutation) return;
+    setPendingMutation({ kind: "delete", eventId: deleteEvent.id });
     try {
       const id = deleteEvent.id;
       await deleteJournalEvent(id);
+      if (!mounted.current) return;
       const reconcile = timeline.acceptDeleted(id);
       setDeleteEvent(null);
       notifications.show({
@@ -179,8 +198,11 @@ export function JournalEventTimeline({
         autoClose: 5000,
       });
       const result = await reconcile;
-      if (typeof result === "object") notifyReconciliationFailure();
+      if (mounted.current && typeof result === "object") {
+        notifyReconciliationFailure();
+      }
     } catch (error) {
+      if (!mounted.current) return;
       const code = graphqlErrorCode(error);
       if (
         code === "GROWING_TRIAL_NOT_ACTIVE" ||
@@ -198,8 +220,7 @@ export function JournalEventTimeline({
         });
       }
     } finally {
-      submitting.current = false;
-      setDeleting(false);
+      if (mounted.current) setPendingMutation(null);
     }
   }
 
@@ -228,6 +249,7 @@ export function JournalEventTimeline({
         >
           {active ? (
             <Button
+              disabled={timeline.status !== "ready"}
               mih={44}
               onClick={(event) => openForm(null, event.currentTarget)}
               variant="light"
@@ -301,13 +323,13 @@ export function JournalEventTimeline({
               <Divider />
             </Stack>
           ))}
-          {timeline.reconciliationFailed ? (
+          {timeline.refreshFailed ? (
             <Alert
               color="yellow"
               title="The Journal timeline may be out of date."
             >
               <Button
-                onClick={() => void timeline.firstPage("reconcile")}
+                onClick={() => void timeline.firstPage("refresh")}
                 size="xs"
                 variant="light"
               >
@@ -315,7 +337,24 @@ export function JournalEventTimeline({
               </Button>
             </Alert>
           ) : null}
-          {timeline.hasNextPage ? (
+          {timeline.loadMoreFailed ? (
+            <Alert
+              color="red"
+              title="Older Journal Events could not be loaded."
+            >
+              <Button
+                onClick={() => void timeline.loadMore()}
+                size="xs"
+                variant="light"
+              >
+                Retry loading older Journal Events
+              </Button>
+            </Alert>
+          ) : null}
+          {timeline.hasNextPage &&
+          !timeline.loadMoreFailed &&
+          !timeline.refreshing &&
+          !timeline.refreshFailed ? (
             <Button
               loading={timeline.loadingMore}
               mih={44}
@@ -329,10 +368,13 @@ export function JournalEventTimeline({
       ) : null}
       <JournalEventModal
         event={formEvent}
-        isSaving={saving}
+        isSaving={
+          pendingMutation?.kind === "create" ||
+          pendingMutation?.kind === "update"
+        }
         key={`journal-form-${formSession}`}
         onClose={() => {
-          if (!submitting.current) setFormOpened(false);
+          if (!pendingMutation) setFormOpened(false);
         }}
         onClosed={restoreFocus}
         onSubmit={handleSave}
@@ -342,9 +384,9 @@ export function JournalEventTimeline({
       />
       <DeleteJournalEventModal
         event={deleteEvent}
-        isDeleting={deleting}
+        isDeleting={pendingMutation?.kind === "delete"}
         onClose={() => {
-          if (!submitting.current) setDeleteEvent(null);
+          if (!pendingMutation) setDeleteEvent(null);
         }}
         onClosed={restoreFocus}
         onConfirm={handleDelete}
