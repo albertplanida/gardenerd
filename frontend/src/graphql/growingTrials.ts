@@ -5,6 +5,7 @@ import {
   CREATE_GROWING_TRIAL_MUTATION,
   GROWING_TRIAL_CONTAINER_OPTIONS_QUERY,
   GROWING_TRIAL_PLANT_OPTIONS_QUERY,
+  GROWING_TRIAL_SETUP_CONTEXT_QUERY,
   GROWING_TRIALS_QUERY,
   START_GROWING_TRIAL_MUTATION,
   UPDATE_GROWING_TRIAL_RESULT_MUTATION,
@@ -49,6 +50,13 @@ type GrowingTrialsResponse = {
   growingTrials: GrowingTrialPage;
 };
 
+export type ListGrowingTrialsOptions = {
+  limit: number;
+  after?: string | null;
+  status?: GrowingTrialStatus | null;
+  signal?: AbortSignal;
+};
+
 type CreateGrowingTrialResponse = {
   createGrowingTrial: GrowingTrial;
 };
@@ -76,19 +84,46 @@ export type UpdateGrowingTrialResultResponse = {
   updateGrowingTrialResult: GrowingTrial;
 };
 
-export async function listGrowingTrials(
-  limit: number,
-  after: string | null,
-  signal?: AbortSignal,
-) {
+export async function listGrowingTrials({
+  limit,
+  after = null,
+  status = null,
+  signal,
+}: ListGrowingTrialsOptions) {
   const client = createGraphqlClient();
   const data = await client.request<GrowingTrialsResponse>({
     document: GROWING_TRIALS_QUERY,
-    variables: { limit, after },
+    variables: { limit, after, status },
     signal,
   });
 
   return data.growingTrials;
+}
+
+type GrowingTrialSetupContextResponse = {
+  plants: { id: string }[];
+  containers: { id: string }[];
+  trials: { items: { id: string }[] };
+};
+
+export type GrowingTrialSetupContext = {
+  hasPlants: boolean;
+  hasContainers: boolean;
+  hasGrowingTrials: boolean;
+};
+
+export async function getGrowingTrialSetupContext(signal?: AbortSignal) {
+  const client = createGraphqlClient();
+  const data = await client.request<GrowingTrialSetupContextResponse>({
+    document: GROWING_TRIAL_SETUP_CONTEXT_QUERY,
+    signal,
+  });
+
+  return {
+    hasPlants: data.plants.length > 0,
+    hasContainers: data.containers.length > 0,
+    hasGrowingTrials: data.trials.items.length > 0,
+  } satisfies GrowingTrialSetupContext;
 }
 
 type PlantOptionsResponse = {

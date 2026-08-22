@@ -9,6 +9,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import type { ReactNode } from "react";
 
 import type { GrowingTrial } from "@/graphql/growingTrials";
 
@@ -63,7 +64,7 @@ export function GrowingTrialList({
       <Alert color="red" title="Growing Trials could not be loaded.">
         <Stack align="flex-start" gap="sm">
           <Text>Check that the local Gardenerd API is running.</Text>
-          <Button onClick={onRetry} size="xs" variant="light">
+          <Button mih={44} onClick={onRetry} variant="light">
             Try again
           </Button>
         </Stack>
@@ -72,6 +73,7 @@ export function GrowingTrialList({
   }
 
   if (trials.length === 0) {
+    if (emptyContent) return emptyContent;
     return (
       <Card withBorder radius="md">
         <Stack gap="xs">
@@ -205,12 +207,13 @@ export function GrowingTrialList({
       <Group justify="flex-end">
         <Button
           disabled={!hasPreviousPage}
+          mih={44}
           onClick={onPrevious}
           variant="default"
         >
           Previous
         </Button>
-        <Button disabled={!hasNextPage} onClick={onNext}>
+        <Button disabled={!hasNextPage} mih={44} onClick={onNext}>
           Next
         </Button>
       </Group>
