@@ -100,7 +100,7 @@ jobs:
           docker compose ps
           exit 1
 
-      - name: Complete and reload a persisted Growing Trial
+      - name: Persist a Journal photo across a backend rebuild
         run: |
           endpoint=http://127.0.0.1:3000/graphql
           plant_response=$(curl --fail --silent --show-error \
@@ -132,6 +132,28 @@ jobs:
             '.data.startGrowingTrial | select(.id == $id and .status == "ACTIVE")' \
             <<<"$start_response"
 
+          event_payload=$(jq --null-input --compact-output \
+            --arg trial_id "$trial_id" --arg event_date "$(date --utc +%F)" \
+            '{query: "mutation($trialId: ID!, $eventDate: Date!) { createJournalEvent(growingTrialId: $trialId, eventType: PHOTO_TAKEN, eventDate: $eventDate, note: \"Docker photo persistence\", timeZone: \"UTC\") { id } }", variables: {trialId: $trial_id, eventDate: $event_date}}')
+          event_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' --data "$event_payload" "$endpoint")
+          event_id=$(jq --exit-status --raw-output '.data.createJournalEvent.id' <<<"$event_response")
+
+          printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
+            | base64 --decode > /tmp/gardenerd-smoke.png
+          photo_response=$(curl --fail --silent --show-error \
+            --form "photo=@/tmp/gardenerd-smoke.png;type=image/png" \
+            --form "clientUploadId=$(cat /proc/sys/kernel/random/uuid)" \
+            --form 'position=0' \
+            "http://127.0.0.1:3000/api/journal-events/$event_id/photos/")
+          photo_id=$(jq --exit-status --raw-output '.photo.id' <<<"$photo_response")
+          full_url=$(jq --exit-status --raw-output '.photo.fullSizeUrl' <<<"$photo_response")
+          thumbnail_url=$(jq --exit-status --raw-output '.photo.thumbnailUrl' <<<"$photo_response")
+          curl --fail --silent --show-error "http://127.0.0.1:3000$full_url" >/dev/null
+          curl --fail --silent --show-error "http://127.0.0.1:3000$thumbnail_url" >/dev/null
+          test -f "data/media/journal-events/$event_id/$photo_id/full.png"
+          test -f "data/media/journal-events/$event_id/$photo_id/thumbnail.webp"
+
           complete_payload=$(jq --null-input --compact-output \
             --arg id "$trial_id" --arg end_date "$(date --utc +%F)" \
             --arg result_summary "Docker persistence verified" \
@@ -143,7 +165,8 @@ jobs:
             '.data.completeGrowingTrial | select(.id == $id and .status == "COMPLETED" and .endDate == $end_date and .resultSummary == "Docker persistence verified")' \
             <<<"$complete_response"
 
-          docker compose restart backend
+          docker compose build backend
+          docker compose up -d --no-deps --force-recreate backend
           for attempt in {1..60}; do
             if curl --fail --silent --show-error \
               --header 'Content-Type: application/json' \
@@ -161,6 +184,25 @@ jobs:
             --arg id "$trial_id" --arg end_date "$(date --utc +%F)" \
             '.data.growingTrials.items[] | select(.id == $id and .status == "COMPLETED" and .startDate != null and .endDate == $end_date and .resultSummary == "Docker persistence verified")' \
             <<<"$persisted_response"
+
+          journal_payload=$(jq --null-input --compact-output \
+            --arg trial_id "$trial_id" \
+            '{query: "query($trialId: ID!) { journalEvents(growingTrialId: $trialId) { items { id photos { id fullSizeUrl thumbnailUrl } } } }", variables: {trialId: $trial_id}}')
+          journal_response=$(curl --fail --silent --show-error \
+            --header 'Content-Type: application/json' --data "$journal_payload" "$endpoint")
+          jq --exit-status --arg event_id "$event_id" --arg photo_id "$photo_id" \
+            '.data.journalEvents.items[] | select(.id == $event_id) | .photos[] | select(.id == $photo_id)' \
+            <<<"$journal_response"
+          full_url=$(jq --exit-status --raw-output --arg event_id "$event_id" \
+            '.data.journalEvents.items[] | select(.id == $event_id) | .photos[0].fullSizeUrl' \
+            <<<"$journal_response")
+          thumbnail_url=$(jq --exit-status --raw-output --arg event_id "$event_id" \
+            '.data.journalEvents.items[] | select(.id == $event_id) | .photos[0].thumbnailUrl' \
+            <<<"$journal_response")
+          curl --fail --silent --show-error "http://127.0.0.1:3000$full_url" >/dev/null
+          curl --fail --silent --show-error "http://127.0.0.1:3000$thumbnail_url" >/dev/null
+          test -f "data/media/journal-events/$event_id/$photo_id/full.png"
+          test -f "data/media/journal-events/$event_id/$photo_id/thumbnail.webp"
 
       - name: Dump compose logs
         if: failure()

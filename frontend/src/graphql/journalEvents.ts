@@ -2,6 +2,7 @@ import { createGraphqlClient } from "./client";
 import {
   CREATE_JOURNAL_EVENT_MUTATION,
   DELETE_JOURNAL_EVENT_MUTATION,
+  DELETE_JOURNAL_PHOTO_MUTATION,
   JOURNAL_EVENTS_QUERY,
   UPDATE_JOURNAL_EVENT_MUTATION,
 } from "./queries";
@@ -25,6 +26,21 @@ export type JournalEvent = {
   eventType: JournalEventEventType;
   eventDate: string;
   note: string;
+  photos: JournalPhoto[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type JournalPhoto = {
+  id: string;
+  originalFilename: string;
+  contentType: string;
+  fileSize: number;
+  width: number;
+  height: number;
+  position: number;
+  thumbnailUrl: string;
+  fullSizeUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -83,4 +99,11 @@ export async function deleteJournalEvent(id: string) {
     deleteJournalEvent: string;
   }>(DELETE_JOURNAL_EVENT_MUTATION, { id });
   return data.deleteJournalEvent;
+}
+
+export async function deleteJournalPhoto(id: string) {
+  const data = await createGraphqlClient().request<{
+    deleteJournalPhoto: boolean;
+  }>(DELETE_JOURNAL_PHOTO_MUTATION, { id });
+  return data.deleteJournalPhoto;
 }

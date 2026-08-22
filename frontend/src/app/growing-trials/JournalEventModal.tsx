@@ -19,11 +19,13 @@ import {
 import type { GrowingTrial } from "@/graphql/growingTrials";
 
 import { localCalendarDate } from "./presentation";
+import { JournalPhotoSelection } from "./JournalPhotoControls";
 
 export type JournalEventFormValues = {
   eventType: JournalEventEventType;
   eventDate: string;
   note: string;
+  photos: File[];
 };
 
 type JournalEventModalProps = {
@@ -53,6 +55,7 @@ export function JournalEventModal({
   );
   const [eventDate, setEventDate] = useState(event?.eventDate ?? today);
   const [note, setNote] = useState(event?.note ?? "");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [typeError, setTypeError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -88,6 +91,7 @@ export function JournalEventModal({
       eventType: eventType!,
       eventDate,
       note: normalizedNote,
+      photos,
     });
   }
 
@@ -154,6 +158,13 @@ export function JournalEventModal({
             ref={noteInput}
             value={note}
           />
+          {!editing ? (
+            <JournalPhotoSelection
+              disabled={isSaving}
+              files={photos}
+              onChange={setPhotos}
+            />
+          ) : null}
           {isSaving ? <Text role="status">Saving Journal Event...</Text> : null}
           <Group justify="flex-end">
             <Button

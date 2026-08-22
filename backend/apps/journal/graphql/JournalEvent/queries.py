@@ -115,8 +115,10 @@ def _journal_event_page(
         )
 
     trial = _get_trial(growing_trial_id)
-    queryset = JournalEvent.objects.filter(growing_trial=trial).order_by(
-        '-event_date', '-created_at', '-id'
+    queryset = (
+        JournalEvent.objects.filter(growing_trial=trial)
+        .prefetch_related('photos')
+        .order_by('-event_date', '-created_at', '-id')
     )
     if after is not None:
         event_date, created_at, event_id = _decode_cursor(after)

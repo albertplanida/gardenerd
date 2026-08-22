@@ -18,6 +18,7 @@ function event(id: number): JournalEvent {
     eventType: "GENERAL_OBSERVATION",
     eventDate: "2026-08-10",
     note: `Event ${id}`,
+    photos: [],
     createdAt: "2026-08-10T12:00:00Z",
     updatedAt: "2026-08-10T12:00:00Z",
   };
@@ -53,6 +54,26 @@ describe("useJournalEvents confirmed creates", () => {
     await act(async () => void (await result.current.acceptCreated(older)));
 
     expect(result.current.items.map(({ id }) => id)).toEqual(["20", "19"]);
+    expect(listJournalEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an older create visible while its selected photos upload", async () => {
+    jest
+      .mocked(listJournalEvents)
+      .mockResolvedValueOnce(page([event(20), event(19)], true, "cursor-19"));
+    const { result } = renderHook(() => useJournalEvents("10"));
+    await act(async () => void (await result.current.firstPage()));
+
+    const older = { ...event(18), eventDate: "2026-08-01" };
+    await act(
+      async () => void (await result.current.acceptCreated(older, true)),
+    );
+
+    expect(result.current.items.map(({ id }) => id)).toEqual([
+      "20",
+      "19",
+      "18",
+    ]);
     expect(listJournalEvents).toHaveBeenCalledTimes(1);
   });
 

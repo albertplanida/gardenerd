@@ -243,6 +243,19 @@ export const JOURNAL_EVENT_FIELDS = gql`
     eventType
     eventDate
     note
+    photos {
+      id
+      originalFilename
+      contentType
+      fileSize
+      width
+      height
+      position
+      thumbnailUrl
+      fullSizeUrl
+      createdAt
+      updatedAt
+    }
     createdAt
     updatedAt
   }
@@ -310,5 +323,11 @@ export const UPDATE_JOURNAL_EVENT_MUTATION = gql`
 export const DELETE_JOURNAL_EVENT_MUTATION = gql`
   mutation DeleteJournalEvent($id: ID!) {
     deleteJournalEvent(id: $id)
+  }
+`;
+
+export const DELETE_JOURNAL_PHOTO_MUTATION = gql`
+  mutation DeleteJournalPhoto($id: ID!) {
+    deleteJournalPhoto(id: $id)
   }
 `;

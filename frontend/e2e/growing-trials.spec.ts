@@ -27,6 +27,20 @@ type MockJournalEvent = {
     | "GENERAL_OBSERVATION";
   eventDate: string;
   note: string;
+  photos?: MockJournalPhoto[];
+  createdAt: string;
+  updatedAt: string;
+};
+type MockJournalPhoto = {
+  id: string;
+  originalFilename: string;
+  contentType: string;
+  fileSize: number;
+  width: number;
+  height: number;
+  position: number;
+  thumbnailUrl: string;
+  fullSizeUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -355,6 +369,15 @@ async function mockGrowingTrialGraphql(
       await route.fulfill({
         contentType: "application/json",
         json: { data: { updateJournalEvent: event } },
+      });
+      return;
+    }
+
+    if (operationName === "DeleteJournalPhoto") {
+      journalRequests.push({ operationName, variables });
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { deleteJournalPhoto: true } },
       });
       return;
     }
@@ -879,6 +902,124 @@ test("creates, edits, and deletes a Journal Event with exact variables", async (
       variables: { id: "1" },
     },
   ]);
+});
+
+test("selects a photo during Journal Event creation and opens the responsive lightbox", async ({
+  page,
+}, testInfo) => {
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-08-01",
+    startMethod: "SEED" as const,
+  };
+  await mockGrowingTrialGraphql(page, { initialTrials: [active] });
+  const postUrls: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") postUrls.push(request.url());
+  });
+  let uploadBody = "";
+  let uploadCount = 0;
+  await page.route("**/api/**", async (route) => {
+    uploadCount += 1;
+    uploadBody = route.request().postData() ?? "";
+    await route.fulfill({
+      contentType: "application/json",
+      status: 201,
+      json: {
+        photo: {
+          id: `photo-${uploadCount}`,
+          originalFilename: uploadCount === 1 ? "leaf.jpg" : "growth.webp",
+          contentType: "image/jpeg",
+          fileSize: 4,
+          width: 1,
+          height: 1,
+          position: uploadCount - 1,
+          thumbnailUrl: "/test-photo.png",
+          fullSizeUrl: "/test-photo.png",
+          createdAt: "2026-08-20T12:00:00Z",
+          updatedAt: "2026-08-20T12:00:00Z",
+        },
+      },
+    });
+  });
+  await page.route("**/test-photo.png", (route) =>
+    route.fulfill({
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+      contentType: "image/png",
+    }),
+  );
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Show Journal" }).click();
+  await page.getByRole("button", { name: "Add Journal Event" }).click();
+  await page.getByRole("combobox", { name: "Event type" }).click();
+  await page.getByRole("option", { name: "Photo taken" }).click();
+  await page.getByLabel("Event date").fill("2026-08-20");
+  await page.getByLabel("Note").fill("First leaf");
+  await page.getByLabel("Choose Journal Event photos").setInputFiles({
+    buffer: Buffer.from("jpeg"),
+    mimeType: "image/jpeg",
+    name: "leaf.jpg",
+  });
+  await expect(page.getByText("1 selected, 4 remaining")).toBeVisible();
+  await page.getByRole("button", { name: "Add Journal Event" }).last().click();
+  await expect
+    .poll(() => postUrls)
+    .toContainEqual(expect.stringContaining("/api/"));
+  await expect.poll(() => uploadCount).toBe(1);
+
+  const open = page.getByRole("button", {
+    name: "Open Photo taken on 2026-08-20: leaf.jpg",
+  });
+  await expect(open).toBeVisible();
+  expect(uploadBody).toContain('name="photo"');
+  expect(uploadBody).toContain('name="clientUploadId"');
+  expect(uploadBody).toContain('name="position"');
+  expect(uploadBody).toContain("\r\n0\r\n");
+  await open.click();
+  const lightbox = page.getByRole("dialog", { name: "leaf.jpg" });
+  await expect(lightbox).toBeVisible();
+  await expect(
+    lightbox.getByRole("button", { name: /previous|next/i }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(open).toBeFocused();
+
+  await page.getByLabel("Add photos to Journal Event").setInputFiles({
+    buffer: Buffer.from("webp"),
+    mimeType: "image/webp",
+    name: "growth.webp",
+  });
+  await expect(
+    page.getByRole("button", {
+      name: "Open Photo taken on 2026-08-20: growth.webp",
+    }),
+  ).toBeVisible();
+  expect(uploadBody).toContain("\r\n1\r\n");
+
+  if (testInfo.project.name === "mobile-chrome") {
+    const remove = page.getByRole("button", { name: "Remove photo leaf.jpg" });
+    expect((await remove.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
+  }
+
+  await page.getByRole("button", { name: "Remove photo leaf.jpg" }).click();
+  await expect(
+    page.getByText(/Permanently remove leaf.jpg from the Journal Event/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Remove photo", exact: true }).click();
+  await expect(
+    page.getByRole("button", {
+      name: "Open Photo taken on 2026-08-20: leaf.jpg",
+    }),
+  ).toHaveCount(0);
 });
 
 test("loads older Journal Events on Pixel 5 without horizontal overflow", async ({

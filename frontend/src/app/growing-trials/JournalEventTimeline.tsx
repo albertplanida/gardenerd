@@ -14,19 +14,29 @@ import { graphqlErrorCode, type GraphqlErrorCode } from "@/graphql/errors";
 import {
   createJournalEvent,
   deleteJournalEvent,
+  deleteJournalPhoto,
   journalEventTypeLabels,
   updateJournalEvent,
   type JournalEvent,
+  type JournalPhoto,
 } from "@/graphql/journalEvents";
 import type { GrowingTrial } from "@/graphql/growingTrials";
 
 import { DeleteJournalEventModal } from "./DeleteJournalEventModal";
+import { DeleteJournalPhotoModal } from "./DeleteJournalPhotoModal";
 import {
   JournalEventModal,
   type JournalEventFormValues,
 } from "./JournalEventModal";
 import { formatDateOnly } from "./presentation";
 import { useJournalEvents } from "./useJournalEvents";
+import {
+  AddJournalPhotos,
+  JournalPhotoGallery,
+  PendingJournalPhotos,
+} from "./JournalPhotoControls";
+import { maxJournalPhotos } from "./journalPhotos";
+import { useJournalPhotoUploads } from "./useJournalPhotoUploads";
 
 type JournalEventTimelineProps = {
   trial: GrowingTrial;
@@ -37,6 +47,7 @@ type PendingMutation =
   | { kind: "create" }
   | { kind: "update"; eventId: string }
   | { kind: "delete"; eventId: string }
+  | { kind: "deletePhoto"; eventId: string; photoId: string }
   | null;
 
 const journalErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
@@ -63,10 +74,20 @@ export function JournalEventTimeline({
   const [pendingMutation, setPendingMutation] = useState<PendingMutation>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteEvent, setDeleteEvent] = useState<JournalEvent | null>(null);
+  const [deletePhoto, setDeletePhoto] = useState<{
+    eventId: string;
+    photo: JournalPhoto;
+  } | null>(null);
   const focusTarget = useRef<HTMLElement | null>(null);
   const mounted = useRef(true);
   const regionId = `journal-${trial.id}`;
   const active = trial.status === "ACTIVE";
+  const photoUploads = useJournalPhotoUploads({
+    events: timeline.items,
+    onUploaded: timeline.acceptPhoto,
+    onRefresh: () => timeline.firstPage("refresh"),
+    onLifecycleConflict: handleLifecycleConflict,
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -124,6 +145,7 @@ export function JournalEventTimeline({
   async function handleLifecycleConflict() {
     setFormOpened(false);
     setDeleteEvent(null);
+    setDeletePhoto(null);
     notifications.show({
       title: "Journal Event was not changed",
       message:
@@ -144,8 +166,9 @@ export function JournalEventTimeline({
     );
     setSaveError(null);
     try {
+      const { photos, ...eventValues } = values;
       const variables = {
-        ...values,
+        ...eventValues,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
       const saved = editedEvent
@@ -154,7 +177,8 @@ export function JournalEventTimeline({
       if (!mounted.current) return;
       const reconcile = editedEvent
         ? timeline.acceptUpdated(saved, editedEvent.eventDate)
-        : timeline.acceptCreated(saved);
+        : timeline.acceptCreated(saved, photos.length > 0);
+      if (!editedEvent && photos.length) photoUploads.enqueue(saved.id, photos);
       setFormOpened(false);
       notifications.show({
         title: editedEvent ? "Journal Event updated" : "Journal Event added",
@@ -176,6 +200,54 @@ export function JournalEventTimeline({
         await handleLifecycleConflict();
       } else {
         setSaveError((code && journalErrorMessages[code]) || genericError);
+      }
+    } finally {
+      if (mounted.current) setPendingMutation(null);
+    }
+  }
+
+  async function handleDeletePhoto() {
+    if (!deletePhoto || pendingMutation) return;
+    const target = deletePhoto;
+    setPendingMutation({
+      kind: "deletePhoto",
+      eventId: target.eventId,
+      photoId: target.photo.id,
+    });
+    try {
+      await deleteJournalPhoto(target.photo.id);
+      if (!mounted.current) return;
+      timeline.acceptPhotoDeleted(target.eventId, target.photo.id);
+      setDeletePhoto(null);
+      notifications.show({
+        title: "Photo removed",
+        message: `${target.photo.originalFilename} was permanently removed.`,
+        color: "green",
+        autoClose: 5000,
+      });
+    } catch (error) {
+      if (!mounted.current) return;
+      const code = graphqlErrorCode(error);
+      if (
+        code === "GROWING_TRIAL_NOT_ACTIVE" ||
+        code === "JOURNAL_EVENT_NOT_FOUND"
+      ) {
+        await handleLifecycleConflict();
+      } else if (code === "JOURNAL_PHOTO_NOT_FOUND") {
+        timeline.acceptPhotoDeleted(target.eventId, target.photo.id);
+        setDeletePhoto(null);
+        notifications.show({
+          title: "Photo no longer exists",
+          message: "The Journal timeline has been updated.",
+          color: "yellow",
+        });
+      } else {
+        notifications.show({
+          title: "Photo was not removed",
+          message: "The existing photo was preserved. Try again.",
+          color: "red",
+          autoClose: 8000,
+        });
       }
     } finally {
       if (mounted.current) setPendingMutation(null);
@@ -283,46 +355,88 @@ export function JournalEventTimeline({
                   : "No Journal Events were recorded before this Growing Trial ended."}
             </Text>
           ) : null}
-          {timeline.items.map((event) => (
-            <Stack gap="xs" key={event.id}>
-              <Group justify="space-between" align="flex-start" wrap="wrap">
-                <Text fw={600}>{journalEventTypeLabels[event.eventType]}</Text>
-                <Text c="dimmed" size="sm">
-                  <time dateTime={event.eventDate}>
-                    {formatDateOnly(event.eventDate)}
-                  </time>
-                </Text>
-              </Group>
-              <Text style={{ whiteSpace: "pre-wrap" }}>{event.note}</Text>
-              {active ? (
-                <Group grow wrap="wrap">
-                  <Button
-                    aria-label={`Edit ${journalEventTypeLabels[event.eventType]} Journal Event from ${event.eventDate}`}
-                    mih={44}
-                    onClick={(clickEvent) =>
-                      openForm(event, clickEvent.currentTarget)
-                    }
-                    variant="default"
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    aria-label={`Delete ${journalEventTypeLabels[event.eventType]} Journal Event from ${event.eventDate}`}
-                    color="red"
-                    mih={44}
-                    onClick={(clickEvent) => {
-                      focusTarget.current = clickEvent.currentTarget;
-                      setDeleteEvent(event);
-                    }}
-                    variant="light"
-                  >
-                    Delete
-                  </Button>
+          {timeline.items.map((timelineEvent) => {
+            const event = {
+              ...timelineEvent,
+              photos: timelineEvent.photos ?? [],
+            };
+            const pendingPhotos = photoUploads.uploads.filter(
+              (upload) => upload.eventId === event.id,
+            );
+            const remaining = Math.max(
+              0,
+              maxJournalPhotos - event.photos.length - pendingPhotos.length,
+            );
+            return (
+              <Stack gap="xs" key={event.id}>
+                <Group justify="space-between" align="flex-start" wrap="wrap">
+                  <Text fw={600}>
+                    {journalEventTypeLabels[event.eventType]}
+                  </Text>
+                  <Text c="dimmed" size="sm">
+                    <time dateTime={event.eventDate}>
+                      {formatDateOnly(event.eventDate)}
+                    </time>
+                  </Text>
                 </Group>
-              ) : null}
-              <Divider />
-            </Stack>
-          ))}
+                <Text style={{ whiteSpace: "pre-wrap" }}>{event.note}</Text>
+                <JournalPhotoGallery
+                  active={active}
+                  deletingPhotoId={
+                    pendingMutation?.kind === "deletePhoto" &&
+                    pendingMutation.eventId === event.id
+                      ? pendingMutation.photoId
+                      : null
+                  }
+                  event={event}
+                  onDelete={(photo, origin) => {
+                    focusTarget.current = origin;
+                    setDeletePhoto({ eventId: event.id, photo });
+                  }}
+                  onImageError={() => void timeline.firstPage("refresh")}
+                />
+                <PendingJournalPhotos
+                  onRemove={photoUploads.remove}
+                  onRetry={photoUploads.retry}
+                  uploads={pendingPhotos}
+                />
+                {active ? (
+                  <AddJournalPhotos
+                    disabled={remaining === 0}
+                    onSelect={(files) => photoUploads.enqueue(event.id, files)}
+                    remaining={remaining}
+                  />
+                ) : null}
+                {active ? (
+                  <Group grow wrap="wrap">
+                    <Button
+                      aria-label={`Edit ${journalEventTypeLabels[event.eventType]} Journal Event from ${event.eventDate}`}
+                      mih={44}
+                      onClick={(clickEvent) =>
+                        openForm(event, clickEvent.currentTarget)
+                      }
+                      variant="default"
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      aria-label={`Delete ${journalEventTypeLabels[event.eventType]} Journal Event from ${event.eventDate}`}
+                      color="red"
+                      mih={44}
+                      onClick={(clickEvent) => {
+                        focusTarget.current = clickEvent.currentTarget;
+                        setDeleteEvent(event);
+                      }}
+                      variant="light"
+                    >
+                      Delete
+                    </Button>
+                  </Group>
+                ) : null}
+                <Divider />
+              </Stack>
+            );
+          })}
           {timeline.refreshFailed ? (
             <Alert
               color="yellow"
@@ -390,6 +504,15 @@ export function JournalEventTimeline({
         }}
         onClosed={restoreFocus}
         onConfirm={handleDelete}
+      />
+      <DeleteJournalPhotoModal
+        isDeleting={pendingMutation?.kind === "deletePhoto"}
+        onClose={() => {
+          if (!pendingMutation) setDeletePhoto(null);
+        }}
+        onClosed={restoreFocus}
+        onConfirm={handleDeletePhoto}
+        photo={deletePhoto?.photo ?? null}
       />
     </Stack>
   );
