@@ -30,7 +30,12 @@ services:
       POSTGRES_PORT: 5432
       DJANGO_MEDIA_ROOT: /app/media
       DJANGO_MEDIA_URL: /media/
-      DJANGO_STORAGE_BACKEND: filesystem
+      DJANGO_STORAGE_BACKEND: ${DJANGO_STORAGE_BACKEND:-filesystem}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_SIGNED_URL_EXPIRY_SECONDS: ${R2_SIGNED_URL_EXPIRY_SECONDS:-3600}
     volumes:
       - ./data/media:/app/media
     expose:
