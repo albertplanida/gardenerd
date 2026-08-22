@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -42,6 +43,7 @@ CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 
 INSTALLED_APPS = [
     'strawberry.django',
+    'storages',
     'apps.containers',
     'apps.growing_trials',
     'apps.journal',
@@ -149,3 +151,40 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = env('DJANGO_MEDIA_URL', default='/media/')
 MEDIA_ROOT = BASE_DIR / env('DJANGO_MEDIA_ROOT', default='media')
+
+STORAGE_BACKEND = env('DJANGO_STORAGE_BACKEND', default='filesystem')
+if STORAGE_BACKEND == 'filesystem':
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+            'OPTIONS': {'location': MEDIA_ROOT, 'base_url': MEDIA_URL},
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+elif STORAGE_BACKEND == 'r2':
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3.S3Storage',
+            'OPTIONS': {
+                'endpoint_url': env('R2_ENDPOINT_URL'),
+                'access_key': env('R2_ACCESS_KEY_ID'),
+                'secret_key': env('R2_SECRET_ACCESS_KEY'),
+                'bucket_name': env('R2_BUCKET_NAME'),
+                'region_name': 'auto',
+                'signature_version': 's3v4',
+                'querystring_auth': True,
+                'querystring_expire': env.int(
+                    'R2_SIGNED_URL_EXPIRY_SECONDS', default=3600
+                ),
+                'default_acl': None,
+                'file_overwrite': True,
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+else:
+    raise ImproperlyConfigured('DJANGO_STORAGE_BACKEND must be filesystem or r2')

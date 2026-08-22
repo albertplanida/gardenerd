@@ -1,13 +1,15 @@
+name: gardenerd-r2-test
+
 services:
   postgres:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-gardenerd}
-      POSTGRES_USER: ${POSTGRES_USER:-gardenerd}
+      POSTGRES_DB: ${POSTGRES_DB:-gardenerd_r2_test}
+      POSTGRES_USER: ${POSTGRES_USER:-gardenerd_r2_test}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
-      - ./data/postgres:/var/lib/postgresql
+      - gardenerd_r2_test_postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -22,17 +24,18 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000}
-      POSTGRES_DB: ${POSTGRES_DB:-gardenerd}
-      POSTGRES_USER: ${POSTGRES_USER:-gardenerd}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3002}
+      POSTGRES_DB: ${POSTGRES_DB:-gardenerd_r2_test}
+      POSTGRES_USER: ${POSTGRES_USER:-gardenerd_r2_test}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      DJANGO_MEDIA_ROOT: /app/media
-      DJANGO_MEDIA_URL: /media/
-      DJANGO_STORAGE_BACKEND: filesystem
-    volumes:
-      - ./data/media:/app/media
+      DJANGO_STORAGE_BACKEND: r2
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:?R2_ENDPOINT_URL is required}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:?R2_BUCKET_NAME is required}
+      R2_SIGNED_URL_EXPIRY_SECONDS: ${R2_SIGNED_URL_EXPIRY_SECONDS:-3600}
     expose:
       - "8000"
     depends_on:
@@ -52,6 +55,9 @@ services:
       GRAPHQL_ENDPOINT: http://backend:8000/graphql/
       NEXT_PUBLIC_GRAPHQL_ENDPOINT: /graphql
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_PORT:-3002}:3000"
     depends_on:
       - backend
+
+volumes:
+  gardenerd_r2_test_postgres:
