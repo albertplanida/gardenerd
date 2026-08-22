@@ -23,6 +23,7 @@ END_DATE_BEFORE_START = 'END_DATE_BEFORE_START'
 INVALID_RESULT_SUMMARY = 'INVALID_RESULT_SUMMARY'
 CONTAINER_OCCUPIED = 'CONTAINER_OCCUPIED'
 INVALID_TIME_ZONE = 'INVALID_TIME_ZONE'
+END_DATE_BEFORE_LATEST_JOURNAL_EVENT = 'END_DATE_BEFORE_LATEST_JOURNAL_EVENT'
 
 ACTIVE_CONTAINER_CONSTRAINT = 'one_active_growing_trial_per_container'
 
@@ -108,6 +109,16 @@ def _validate_end_date(
         raise _error(
             END_DATE_BEFORE_START,
             'End date cannot be before the start date.',
+        )
+    latest_event_date = (
+        trial.journal_events.order_by('-event_date')
+        .values_list('event_date', flat=True)
+        .first()
+    )
+    if latest_event_date is not None and end_date < latest_event_date:
+        raise _error(
+            END_DATE_BEFORE_LATEST_JOURNAL_EVENT,
+            'End date cannot be before the latest Journal Event.',
         )
 
 

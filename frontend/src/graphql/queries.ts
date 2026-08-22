@@ -236,3 +236,79 @@ export const UPDATE_GROWING_TRIAL_RESULT_MUTATION = gql`
     }
   }
 `;
+
+export const JOURNAL_EVENT_FIELDS = gql`
+  fragment JournalEventFields on JournalEventType {
+    id
+    eventType
+    eventDate
+    note
+    createdAt
+    updatedAt
+  }
+`;
+
+export const JOURNAL_EVENTS_QUERY = gql`
+  ${JOURNAL_EVENT_FIELDS}
+  query JournalEvents($growingTrialId: ID!, $limit: Int!, $after: String) {
+    journalEvents(
+      growingTrialId: $growingTrialId
+      limit: $limit
+      after: $after
+    ) {
+      items {
+        ...JournalEventFields
+      }
+      hasNextPage
+      endCursor
+    }
+  }
+`;
+
+export const CREATE_JOURNAL_EVENT_MUTATION = gql`
+  ${JOURNAL_EVENT_FIELDS}
+  mutation CreateJournalEvent(
+    $growingTrialId: ID!
+    $eventType: JournalEventEventType!
+    $eventDate: Date!
+    $note: String!
+    $timeZone: String!
+  ) {
+    createJournalEvent(
+      growingTrialId: $growingTrialId
+      eventType: $eventType
+      eventDate: $eventDate
+      note: $note
+      timeZone: $timeZone
+    ) {
+      ...JournalEventFields
+    }
+  }
+`;
+
+export const UPDATE_JOURNAL_EVENT_MUTATION = gql`
+  ${JOURNAL_EVENT_FIELDS}
+  mutation UpdateJournalEvent(
+    $id: ID!
+    $eventType: JournalEventEventType!
+    $eventDate: Date!
+    $note: String!
+    $timeZone: String!
+  ) {
+    updateJournalEvent(
+      id: $id
+      eventType: $eventType
+      eventDate: $eventDate
+      note: $note
+      timeZone: $timeZone
+    ) {
+      ...JournalEventFields
+    }
+  }
+`;
+
+export const DELETE_JOURNAL_EVENT_MUTATION = gql`
+  mutation DeleteJournalEvent($id: ID!) {
+    deleteJournalEvent(id: $id)
+  }
+`;

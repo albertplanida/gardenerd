@@ -13,6 +13,23 @@ type MockGrowingTrial = {
   createdAt: string;
   updatedAt: string;
 };
+type MockJournalEvent = {
+  id: string;
+  eventType:
+    | "PLANTED"
+    | "WATERED"
+    | "GERMINATED"
+    | "FERTILIZED"
+    | "PRUNED"
+    | "HARVESTED"
+    | "PROBLEM_NOTICED"
+    | "PHOTO_TAKEN"
+    | "GENERAL_OBSERVATION";
+  eventDate: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};
 type GraphqlRequest = {
   operationName?: string;
   query?: string;
@@ -27,6 +44,10 @@ type MockGraphqlOptions = {
   plantOptionFailures?: number;
   saveFailures?: number;
   startErrors?: string[];
+  initialJournalEvents?: Record<string, MockJournalEvent[]>;
+  journalMutationErrors?: string[];
+  journalQueryFailures?: number;
+  journalLoadMoreFailures?: number;
 };
 
 const graphqlRoute = /\/graphql\/?(\?.*)?$/;
@@ -68,6 +89,10 @@ async function mockGrowingTrialGraphql(
     plantOptionFailures = 0,
     saveFailures = 0,
     startErrors = [],
+    initialJournalEvents = {},
+    journalMutationErrors = [],
+    journalQueryFailures = 0,
+    journalLoadMoreFailures = 0,
   }: MockGraphqlOptions = {},
 ) {
   const trials = [...initialTrials].sort((a, b) => Number(b.id) - Number(a.id));
@@ -75,6 +100,16 @@ async function mockGrowingTrialGraphql(
   const startRequests: Record<string, string | number | null>[] = [];
   const terminalRequests: Record<string, string | number | null>[] = [];
   const listRequests: Record<string, string | number | null>[] = [];
+  const journalRequests: {
+    operationName: string;
+    variables: Record<string, string | number | null>;
+  }[] = [];
+  const journalEvents = new Map(
+    Object.entries(initialJournalEvents).map(([id, events]) => [
+      id,
+      [...events],
+    ]),
+  );
   const unexpected: string[] = [];
   unknownOperations.set(page, unexpected);
   let remainingQueryFailures = queryFailures;
@@ -82,6 +117,8 @@ async function mockGrowingTrialGraphql(
   let remainingPlantOptionFailures = plantOptionFailures;
   let remainingSaveFailures = saveFailures;
   let hasCreated = false;
+  let remainingJournalQueryFailures = journalQueryFailures;
+  let remainingJournalLoadMoreFailures = journalLoadMoreFailures;
 
   await page.route(graphqlRoute, async (route) => {
     const rawBody = route.request().postData() ?? "{}";
@@ -186,6 +223,142 @@ async function mockGrowingTrialGraphql(
       return;
     }
 
+    if (operationName === "JournalEvents") {
+      journalRequests.push({ operationName, variables });
+      const loadMoreFailed =
+        variables.after !== null && remainingJournalLoadMoreFailures > 0;
+      if (remainingJournalQueryFailures > 0 || loadMoreFailed) {
+        if (remainingJournalQueryFailures > 0)
+          remainingJournalQueryFailures -= 1;
+        if (loadMoreFailed) remainingJournalLoadMoreFailures -= 1;
+        await route.fulfill({
+          contentType: "application/json",
+          json: { errors: [{ message: "Journal Events unavailable" }] },
+        });
+        return;
+      }
+      const growingTrialId = String(variables.growingTrialId);
+      if (!trials.some((trial) => trial.id === growingTrialId)) {
+        await route.fulfill({
+          contentType: "application/json",
+          json: {
+            errors: [
+              {
+                message: "Growing Trial not found.",
+                extensions: { code: "GROWING_TRIAL_NOT_FOUND" },
+              },
+            ],
+          },
+        });
+        return;
+      }
+      const events = journalEvents.get(growingTrialId) ?? [];
+      const limit = Number(variables.limit ?? 20);
+      const after = variables.after as string | null;
+      const afterId = after ? after.replace("journal-cursor:", "") : null;
+      const start = afterId
+        ? events.findIndex((event) => event.id === afterId) + 1
+        : 0;
+      const items = events.slice(start, start + limit);
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            journalEvents: {
+              items,
+              hasNextPage: start + limit < events.length,
+              endCursor: items.length
+                ? `journal-cursor:${items[items.length - 1].id}`
+                : null,
+            },
+          },
+        },
+      });
+      return;
+    }
+
+    if (
+      operationName === "CreateJournalEvent" ||
+      operationName === "UpdateJournalEvent" ||
+      operationName === "DeleteJournalEvent"
+    ) {
+      journalRequests.push({ operationName, variables });
+      const errorCode = journalMutationErrors.shift();
+      if (errorCode) {
+        if (errorCode === "GROWING_TRIAL_NOT_ACTIVE") {
+          const id = String(variables.growingTrialId ?? "7");
+          const staleTrial = trials.find((trial) => trial.id === id);
+          if (staleTrial) staleTrial.status = "COMPLETED";
+        }
+        await route.fulfill({
+          contentType: "application/json",
+          json: {
+            errors: [
+              {
+                message: "Journal mutation failed",
+                extensions: { code: errorCode },
+              },
+            ],
+          },
+        });
+        return;
+      }
+      if (operationName === "CreateJournalEvent") {
+        const growingTrialId = String(variables.growingTrialId);
+        const events = journalEvents.get(growingTrialId) ?? [];
+        const event: MockJournalEvent = {
+          id: String(Math.max(0, ...events.map((item) => Number(item.id))) + 1),
+          eventType: variables.eventType as MockJournalEvent["eventType"],
+          eventDate: String(variables.eventDate),
+          note: String(variables.note),
+          createdAt: "2026-08-20T12:00:00Z",
+          updatedAt: "2026-08-20T12:00:00Z",
+        };
+        events.unshift(event);
+        journalEvents.set(growingTrialId, events);
+        await route.fulfill({
+          contentType: "application/json",
+          json: { data: { createJournalEvent: event } },
+        });
+        return;
+      }
+      const entry = [...journalEvents.entries()].find(([, events]) =>
+        events.some((event) => event.id === variables.id),
+      );
+      if (!entry) throw new Error(`Unknown Journal Event ${variables.id}`);
+      const [growingTrialId, events] = entry;
+      const index = events.findIndex((event) => event.id === variables.id);
+      if (operationName === "DeleteJournalEvent") {
+        events.splice(index, 1);
+        journalEvents.set(growingTrialId, events);
+        await route.fulfill({
+          contentType: "application/json",
+          json: { data: { deleteJournalEvent: variables.id } },
+        });
+        return;
+      }
+      const event = {
+        ...events[index],
+        eventType: variables.eventType as MockJournalEvent["eventType"],
+        eventDate: String(variables.eventDate),
+        note: String(variables.note),
+        updatedAt: "2026-08-20T13:00:00Z",
+      };
+      events.splice(index, 1);
+      events.push(event);
+      events.sort(
+        (left, right) =>
+          right.eventDate.localeCompare(left.eventDate) ||
+          right.createdAt.localeCompare(left.createdAt),
+      );
+      journalEvents.set(growingTrialId, events);
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { updateJournalEvent: event } },
+      });
+      return;
+    }
+
     if (operationName === "CreateGrowingTrial") {
       createRequests.push(variables);
       if (remainingSaveFailures > 0) {
@@ -285,7 +458,13 @@ async function mockGrowingTrialGraphql(
     });
   });
 
-  return { createRequests, listRequests, startRequests, terminalRequests };
+  return {
+    createRequests,
+    journalRequests,
+    listRequests,
+    startRequests,
+    terminalRequests,
+  };
 }
 
 async function chooseTrialRelationships(page: Page) {
@@ -598,4 +777,265 @@ test("keeps the planned card within the mobile viewport with a touch-friendly ac
   ).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   );
+});
+
+test("creates, edits, and deletes a Journal Event with exact variables", async ({
+  page,
+}, testInfo) => {
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-08-01",
+    startMethod: "SEED" as const,
+  };
+  const { journalRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+  });
+  await page.goto("/growing-trials");
+  const show = page.getByRole("button", { name: "Show Journal" });
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await show.click();
+  await expect(
+    page.getByRole("button", { name: "Hide Journal" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByText("No Journal Events have been recorded yet."),
+  ).toBeVisible();
+
+  const add = page.getByRole("button", { name: "Add Journal Event" });
+  if (testInfo.project.name === "mobile-chrome") {
+    expect((await add.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  }
+  await add.click();
+  await page.getByRole("button", { name: "Add Journal Event" }).last().click();
+  await expect(page.getByText("Select an event type.")).toBeVisible();
+  await page.getByRole("combobox", { name: "Event type" }).click();
+  await page.getByRole("option", { name: "Watered" }).click();
+  await page.getByLabel("Event date").fill("2026-08-10");
+  await page.getByLabel("Note").fill("  Watered deeply.\nSoil was dry.  ");
+  await page.getByRole("button", { name: "Add Journal Event" }).last().click();
+  await expect(page.getByText("Journal Event added")).toBeVisible();
+  await expect(page.getByText(/Watered deeply/)).toBeVisible();
+  await expect(add).toBeFocused();
+
+  const edit = page.getByRole("button", {
+    name: "Edit Watered Journal Event from 2026-08-10",
+  });
+  if (testInfo.project.name === "mobile-chrome") {
+    expect((await edit.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  }
+  await edit.click();
+  await page.getByRole("combobox", { name: "Event type" }).click();
+  await page.getByRole("option", { name: "Harvested" }).click();
+  await page.getByLabel("Event date").fill("2026-08-12");
+  await page.getByLabel("Note").fill("First harvest");
+  await page.getByRole("button", { name: "Save Journal Event" }).click();
+  await expect(page.getByText("First harvest")).toBeVisible();
+
+  const remove = page.getByRole("button", {
+    name: "Delete Harvested Journal Event from 2026-08-12",
+  });
+  if (testInfo.project.name === "mobile-chrome") {
+    expect((await remove.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  }
+  await remove.click();
+  await expect(
+    page.getByText(/Permanently delete the Harvested event/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete Journal Event" }).click();
+  await expect(page.getByText("Journal Event deleted")).toBeVisible();
+  await expect(page.getByText("First harvest")).toHaveCount(0);
+
+  const timeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+  expect(journalRequests).toEqual([
+    {
+      operationName: "JournalEvents",
+      variables: { growingTrialId: "7", limit: 20, after: null },
+    },
+    {
+      operationName: "CreateJournalEvent",
+      variables: {
+        growingTrialId: "7",
+        eventType: "WATERED",
+        eventDate: "2026-08-10",
+        note: "Watered deeply.\nSoil was dry.",
+        timeZone,
+      },
+    },
+    {
+      operationName: "UpdateJournalEvent",
+      variables: {
+        id: "1",
+        eventType: "HARVESTED",
+        eventDate: "2026-08-12",
+        note: "First harvest",
+        timeZone,
+      },
+    },
+    {
+      operationName: "DeleteJournalEvent",
+      variables: { id: "1" },
+    },
+  ]);
+});
+
+test("loads older Journal Events on Pixel 5 without horizontal overflow", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chrome");
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-07-01",
+    startMethod: "SEED" as const,
+  };
+  const events = Array.from({ length: 21 }, (_, index) => ({
+    id: String(21 - index),
+    eventType: (index === 0 ? "HARVESTED" : "GENERAL_OBSERVATION") as
+      "HARVESTED" | "GENERAL_OBSERVATION",
+    eventDate: `2026-08-${String(20 - Math.min(index, 19)).padStart(2, "0")}`,
+    note: index === 0 ? "Newest event" : `Observation ${index}`,
+    createdAt: `2026-08-20T${String(23 - index).padStart(2, "0")}:00:00Z`,
+    updatedAt: "2026-08-20T12:00:00Z",
+  }));
+  const { journalRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+    initialJournalEvents: { "7": events },
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Show Journal" }).click();
+  await expect(page.getByText("Newest event")).toBeVisible();
+  const loadMore = page.getByRole("button", {
+    name: "Load more Journal Events",
+  });
+  const box = await loadMore.boundingBox();
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  await loadMore.click();
+  await expect(page.getByText("Observation 20")).toBeVisible();
+  expect(journalRequests.at(-1)?.variables.after).toBe("journal-cursor:2");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
+});
+
+test("retries a failed older Journal page without replacing loaded events", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium");
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-07-01",
+    startMethod: "SEED" as const,
+  };
+  const events = Array.from({ length: 21 }, (_, index) => ({
+    id: String(21 - index),
+    eventType: "GENERAL_OBSERVATION" as const,
+    eventDate: "2026-08-20",
+    note: index === 0 ? "Newest retained event" : `Older event ${index}`,
+    createdAt: `2026-08-20T${String(23 - index).padStart(2, "0")}:00:00Z`,
+    updatedAt: "2026-08-20T12:00:00Z",
+  }));
+  const { journalRequests } = await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+    initialJournalEvents: { "7": events },
+    journalLoadMoreFailures: 1,
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Show Journal" }).click();
+  await page.getByRole("button", { name: "Load more Journal Events" }).click();
+
+  await expect(
+    page.getByText("Older Journal Events could not be loaded."),
+  ).toBeVisible();
+  await expect(page.getByText("Newest retained event")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Retry loading older Journal Events" })
+    .click();
+  await expect(page.getByText("Older event 20")).toBeVisible();
+  expect(
+    journalRequests.slice(-2).map((request) => request.variables.after),
+  ).toEqual(["journal-cursor:2", "journal-cursor:2"]);
+});
+
+test("keeps planned and terminal Journal timelines read-only", async ({
+  page,
+}) => {
+  const planned = makeTrial("8");
+  const completed = {
+    ...makeTrial("7"),
+    status: "COMPLETED" as const,
+    startDate: "2026-08-01",
+    startMethod: "SEED" as const,
+    endDate: "2026-08-15",
+  };
+  await mockGrowingTrialGraphql(page, {
+    initialTrials: [planned, completed],
+    initialJournalEvents: {
+      "7": [
+        {
+          id: "1",
+          eventType: "HARVESTED",
+          eventDate: "2026-08-15",
+          note: "Final harvest",
+          createdAt: "2026-08-15T12:00:00Z",
+          updatedAt: "2026-08-15T12:00:00Z",
+        },
+      ],
+    },
+  });
+  await page.goto("/growing-trials");
+  const toggles = page.getByRole("button", { name: "Show Journal" });
+  await toggles.last().click();
+  await toggles.click();
+  await expect(page.getByText("Final harvest")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Journal Events become available after this Growing Trial starts.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Add Journal Event" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^Edit .*Journal Event/ }),
+  ).toHaveCount(0);
+});
+
+test("retries a failed Journal query and refreshes a stale active trial", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium");
+  const active = {
+    ...makeTrial("7"),
+    status: "ACTIVE" as const,
+    startDate: "2026-08-01",
+    startMethod: "SEED" as const,
+  };
+  await mockGrowingTrialGraphql(page, {
+    initialTrials: [active],
+    journalQueryFailures: 1,
+    journalMutationErrors: ["GROWING_TRIAL_NOT_ACTIVE"],
+  });
+  await page.goto("/growing-trials");
+  await page.getByRole("button", { name: "Show Journal" }).click();
+  await expect(
+    page.getByText("Journal Events could not be loaded."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Try Journal again" }).click();
+  await expect(
+    page.getByText("No Journal Events have been recorded yet."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add Journal Event" }).click();
+  await page.getByRole("combobox", { name: "Event type" }).click();
+  await page.getByRole("option", { name: "Watered" }).click();
+  await page.getByLabel("Note").fill("Watered");
+  await page.getByRole("button", { name: "Add Journal Event" }).last().click();
+  await expect(page.getByText("Journal Event was not changed")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
 });
