@@ -156,7 +156,7 @@ export function useJournalEvents(growingTrialId: string) {
     }
   }
 
-  function acceptCreated(event: JournalEvent) {
+  function acceptCreated(event: JournalEvent, keepVisible = false) {
     activeController.current?.abort();
     requestSequence.current += 1;
     setLoadingMore(false);
@@ -166,10 +166,12 @@ export function useJournalEvents(growingTrialId: string) {
     const oldest = page.items.at(-1);
     const belongsInLoadedRange =
       !page.hasNextPage || !oldest || newestFirst(event, oldest) <= 0;
-    if (!belongsInLoadedRange) return Promise.resolve("local" as const);
+    if (!belongsInLoadedRange && !keepVisible)
+      return Promise.resolve("local" as const);
 
     const needsRefresh =
-      page.hasNextPage || page.items.length >= loadedCapacity.current;
+      !keepVisible &&
+      (page.hasNextPage || page.items.length >= loadedCapacity.current);
     setPage((current) => {
       const items = [
         event,
@@ -177,7 +179,7 @@ export function useJournalEvents(growingTrialId: string) {
       ].sort(newestFirst);
       return {
         ...current,
-        items: items.slice(0, loadedCapacity.current),
+        items: keepVisible ? items : items.slice(0, loadedCapacity.current),
       };
     });
     return needsRefresh
@@ -217,6 +219,45 @@ export function useJournalEvents(growingTrialId: string) {
       : Promise.resolve("local" as const);
   }
 
+  function acceptPhoto(eventId: string, photo: JournalEvent["photos"][number]) {
+    setPage((current) => ({
+      ...current,
+      items: current.items.map((event) =>
+        event.id === eventId
+          ? {
+              ...event,
+              photos: [
+                ...(event.photos ?? []).filter((item) => item.id !== photo.id),
+                photo,
+              ].sort((left, right) =>
+                left.position === right.position
+                  ? left.id.localeCompare(right.id, undefined, {
+                      numeric: true,
+                    })
+                  : left.position - right.position,
+              ),
+            }
+          : event,
+      ),
+    }));
+  }
+
+  function acceptPhotoDeleted(eventId: string, photoId: string) {
+    setPage((current) => ({
+      ...current,
+      items: current.items.map((event) =>
+        event.id === eventId
+          ? {
+              ...event,
+              photos: (event.photos ?? []).filter(
+                (photo) => photo.id !== photoId,
+              ),
+            }
+          : event,
+      ),
+    }));
+  }
+
   return {
     ...page,
     status,
@@ -229,5 +270,7 @@ export function useJournalEvents(growingTrialId: string) {
     acceptCreated,
     acceptUpdated,
     acceptDeleted,
+    acceptPhoto,
+    acceptPhotoDeleted,
   };
 }

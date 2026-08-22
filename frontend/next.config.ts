@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
         destination: process.env.GRAPHQL_ENDPOINT ?? `${backendUrl}/graphql/`,
       },
       {
+        source: "/api/:path*/",
+        destination: `${backendUrl}/api/:path*/`,
+      },
+      {
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
+      },
+      {
         source: "/admin",
         destination: `${backendUrl}/admin/`,
       },
