@@ -111,6 +111,11 @@ only to its environment's bucket, and never expose these values as frontend
 variables or image build arguments. Photo URLs are generated on demand and
 signed for one hour; they are not stored in PostgreSQL.
 
+The default `docker-compose.yml` also supports R2 when these variables are set.
+It continues to use filesystem storage when `DJANGO_STORAGE_BACKEND` is omitted
+or set to `filesystem`. The local media bind mount remains available in that
+mode and is unused when R2 is selected.
+
 Enable R2 object versioning or an equivalent backup policy appropriate to the
 deployment. Database backups and object backups must be retained together,
 because PostgreSQL stores the object keys while R2 stores the image data.
