@@ -57,3 +57,40 @@ class JournalEvent(models.Model):
         # JournalEvent.clean() owns note coercion, normalization, and validation.
         self.full_clean(exclude={'note'})
         return super().save(*args, **kwargs)
+
+
+class JournalPhoto(models.Model):
+    journal_event = models.ForeignKey(
+        JournalEvent,
+        on_delete=models.CASCADE,
+        related_name='photos',
+    )
+    full_object_key = models.CharField(max_length=500)
+    thumbnail_object_key = models.CharField(max_length=500)
+    original_filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=20)
+    file_size = models.PositiveBigIntegerField()
+    original_upload_size = models.PositiveBigIntegerField()
+    width = models.PositiveIntegerField()
+    height = models.PositiveIntegerField()
+    position = models.PositiveIntegerField()
+    client_upload_id = models.UUIDField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['journal_event', 'client_upload_id'],
+                name='journal_photo_event_client_upload_unique',
+            ),
+            models.UniqueConstraint(
+                fields=['journal_event', 'position'],
+                name='journal_photo_event_position_unique',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(position__gte=0),
+                name='journal_photo_position_nonnegative',
+            ),
+        ]
