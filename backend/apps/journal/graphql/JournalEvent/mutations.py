@@ -8,6 +8,7 @@ from apps.journal.graphql.JournalEvent.types import (
     JournalEventEventType,
     JournalEventType,
 )
+from apps.journal.photo_services import JournalPhotoError, delete_journal_photo
 from apps.journal.services import (
     JournalEventError,
     create_journal_event,
@@ -35,6 +36,18 @@ def _run_journal_mutation(operation, action: str, record_id: strawberry.ID, **va
 
 @strawberry.type
 class JournalEventMutations:
+    @strawberry.mutation
+    def delete_journal_photo(self, id: strawberry.ID) -> bool:
+        try:
+            return delete_journal_photo(photo_id=id)
+        except JournalPhotoError as exc:
+            raise GraphQLError(str(exc), extensions={'code': exc.code}) from exc
+        except Exception as exc:
+            logger.exception('Unexpected error while deleting Journal Photo %s', id)
+            raise GraphQLError(
+                'Internal server error.', extensions={'code': 'INTERNAL_ERROR'}
+            ) from exc
+
     @strawberry.mutation
     def create_journal_event(
         self,

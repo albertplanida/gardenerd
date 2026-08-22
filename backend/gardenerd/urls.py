@@ -15,14 +15,32 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
 from django.views.decorators.csrf import csrf_exempt
+from django.views.static import serve
 from strawberry.django.views import GraphQLView
+
+from apps.journal.views import upload_journal_photo
 
 from .schema import schema
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('graphql/', csrf_exempt(GraphQLView.as_view(schema=schema))),
+    path(
+        'api/journal-events/<int:event_id>/photos/',
+        upload_journal_photo,
+        name='upload-journal-photo',
+    ),
 ]
+
+if settings.STORAGE_BACKEND == 'filesystem':
+    urlpatterns.append(
+        re_path(
+            rf'^{settings.MEDIA_URL.lstrip("/")}(?P<path>.*)$',
+            serve,
+            {'document_root': settings.MEDIA_ROOT},
+        )
+    )
