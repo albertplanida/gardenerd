@@ -18,6 +18,7 @@ jest.mock("next/navigation", () => ({
 jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn(), hide: jest.fn() },
 }));
+jest.mock("../WeeklyTaskList", () => ({ WeeklyTaskList: () => null }));
 jest.mock("@/graphql/growingTrials", () => ({
   abandonGrowingTrial: jest.fn(),
   completeGrowingTrial: jest.fn(),

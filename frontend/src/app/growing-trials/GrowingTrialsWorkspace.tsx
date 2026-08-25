@@ -44,6 +44,7 @@ import { StartGrowingTrialModal } from "./StartGrowingTrialModal";
 import { useGrowingTrialOptions } from "./useGrowingTrialOptions";
 import { useGrowingTrials } from "./useGrowingTrials";
 import { useGrowingTrialSetupContext } from "./useGrowingTrialSetupContext";
+import { WeeklyTaskList } from "../WeeklyTaskList";
 
 const refreshNotificationId = "growing-trial-refresh-failed";
 const startErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
@@ -535,6 +536,7 @@ export function GrowingTrialsWorkspace({
           onEditResult={(trial) => openEndModal(trial, "edit")}
           onRefreshTrials={trials.retryRefresh}
         />
+        {variant === "dashboard" ? <WeeklyTaskList /> : null}
       </Stack>
 
       <GrowingTrialFormModal

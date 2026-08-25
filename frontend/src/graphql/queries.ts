@@ -6,6 +6,22 @@ export const HEALTH_QUERY = gql`
   }
 `;
 
+export const WEEKLY_TASKS_QUERY = gql`
+  query WeeklyTasks($timeZone: String!) {
+    weeklyTasks(timeZone: $timeZone) {
+      startDate
+      endDate
+      days {
+        date
+        tasks {
+          key
+          text
+        }
+      }
+    }
+  }
+`;
+
 export const CONTAINERS_QUERY = gql`
   query Containers {
     containers {
