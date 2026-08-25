@@ -7,8 +7,8 @@ import { useWeeklyTasks } from "./useWeeklyTasks";
 jest.mock("@/graphql/weeklyTasks", () => ({ getWeeklyTasks: jest.fn() }));
 
 const emptyWeek = {
-  startDate: "2026-08-24",
-  endDate: "2026-08-30",
+  startDate: "2026-08-17",
+  endDate: "2026-08-23",
   days: [],
 };
 

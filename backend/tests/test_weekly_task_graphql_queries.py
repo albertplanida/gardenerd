@@ -69,24 +69,24 @@ def test_weekly_tasks_returns_complete_grouped_payload_and_serialized_boundaries
 
     assert 'errors' not in body
     week = body['data']['weeklyTasks']
-    assert (week['startDate'], week['endDate']) == ('2026-08-24', '2026-08-30')
+    assert (week['startDate'], week['endDate']) == ('2026-08-17', '2026-08-23')
     assert [day['date'] for day in week['days']] == [
-        '2026-08-24',
-        '2026-08-25',
-        '2026-08-26',
-        '2026-08-27',
-        '2026-08-29',
-        '2026-08-30',
+        '2026-08-17',
+        '2026-08-18',
+        '2026-08-19',
+        '2026-08-20',
+        '2026-08-22',
+        '2026-08-23',
     ]
     assert week['days'][0]['tasks'][0] == {
-        'key': f'weekly-task:v1:2026-08-24:soil-moisture:{trial.id}',
+        'key': f'weekly-task:v1:2026-08-17:soil-moisture:{trial.id}',
         'text': (
             'Check soil moisture for Basil in Patio Pot. Water only if the top '
             'inch feels dry.'
         ),
     }
     assert week['days'][-1]['tasks'][0]['key'] == (
-        'weekly-task:v1:2026-08-30:weekly-review'
+        'weekly-task:v1:2026-08-23:weekly-review'
     )
 
 
@@ -110,8 +110,8 @@ def test_weekly_tasks_is_active_only(client):
 @pytest.mark.django_db
 def test_weekly_tasks_empty_week_keeps_boundaries(client):
     assert _post(client, {'timeZone': 'UTC'}).json()['data']['weeklyTasks'] == {
-        'startDate': '2026-08-24',
-        'endDate': '2026-08-30',
+        'startDate': '2026-08-17',
+        'endDate': '2026-08-23',
         'days': [],
     }
 

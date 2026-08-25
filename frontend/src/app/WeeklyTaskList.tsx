@@ -62,7 +62,7 @@ export function WeeklyTaskList() {
       <Stack gap="sm">
         <div>
           <Title id="weekly-tasks-heading" order={2}>
-            Next week
+            This week
           </Title>
           <Text c="dimmed" mt={4}>
             A read-only plan based on your active Growing Trials.
@@ -72,7 +72,7 @@ export function WeeklyTaskList() {
         {tasks.status === "loading" ? (
           <Group gap="sm" role="status">
             <Loader size="sm" />
-            <Text>Loading next week&apos;s tasks...</Text>
+            <Text>Loading this week&apos;s tasks...</Text>
           </Group>
         ) : null}
 
@@ -97,7 +97,7 @@ export function WeeklyTaskList() {
             {days.length === 0 ? (
               <Card withBorder radius="md">
                 <Stack align="flex-start" gap="sm">
-                  <Title order={3}>No tasks planned for next week</Title>
+                  <Title order={3}>No tasks planned for this week</Title>
                   <Text c="dimmed">
                     Weekly tasks appear when you have an active Growing Trial.
                   </Text>

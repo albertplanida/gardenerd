@@ -50,15 +50,13 @@ def _tasks(week, scheduled_date):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize('weekday', range(7))
-def test_week_is_strictly_following_monday_through_sunday_for_every_weekday(
-    weekday,
-):
+def test_week_contains_current_monday_through_sunday_for_every_weekday(weekday):
     reference = datetime(2026, 8, 17 + weekday, 12, tzinfo=UTC)
 
     week = generate_weekly_tasks(time_zone='UTC', reference_datetime=reference)
 
-    assert week.start_date == date(2026, 8, 24)
-    assert week.end_date == date(2026, 8, 30)
+    assert week.start_date == date(2026, 8, 17)
+    assert week.end_date == date(2026, 8, 23)
 
 
 @pytest.mark.django_db
@@ -68,26 +66,26 @@ def test_week_is_strictly_following_monday_through_sunday_for_every_weekday(
         (
             datetime(2025, 12, 31, 23, 30, tzinfo=UTC),
             'Pacific/Kiritimati',
-            date(2026, 1, 5),
-            date(2026, 1, 11),
+            date(2025, 12, 29),
+            date(2026, 1, 4),
         ),
         (
             datetime(2024, 2, 25, 12, tzinfo=UTC),
             'UTC',
-            date(2024, 2, 26),
-            date(2024, 3, 3),
+            date(2024, 2, 19),
+            date(2024, 2, 25),
         ),
         (
             datetime(2026, 3, 8, 7, 30, tzinfo=UTC),
             'America/Los_Angeles',
-            date(2026, 3, 9),
-            date(2026, 3, 15),
+            date(2026, 3, 2),
+            date(2026, 3, 8),
         ),
         (
             datetime(2026, 11, 1, 8, 30, tzinfo=UTC),
             'America/Los_Angeles',
-            date(2026, 11, 2),
-            date(2026, 11, 8),
+            date(2026, 10, 26),
+            date(2026, 11, 1),
         ),
     ],
 )
@@ -114,8 +112,8 @@ def test_browser_local_date_can_differ_from_server_utc_date():
     )
     utc = generate_weekly_tasks(time_zone='UTC', reference_datetime=reference)
 
-    assert los_angeles.start_date == date(2026, 8, 17)
-    assert utc.start_date == date(2026, 8, 24)
+    assert los_angeles.start_date == date(2026, 8, 10)
+    assert utc.start_date == date(2026, 8, 17)
 
 
 @pytest.mark.django_db
@@ -139,8 +137,8 @@ def test_reference_datetime_must_be_aware():
 def test_empty_week_retains_calculated_boundaries_and_omits_all_days():
     week = generate_weekly_tasks(time_zone='UTC', reference_datetime=REFERENCE)
 
-    assert week.start_date == date(2026, 8, 24)
-    assert week.end_date == date(2026, 8, 30)
+    assert week.start_date == date(2026, 8, 17)
+    assert week.end_date == date(2026, 8, 23)
     assert week.days == ()
 
 
@@ -159,10 +157,10 @@ def test_only_active_trials_generate_tasks_and_global_tasks_are_deduplicated():
 
     week = generate_weekly_tasks(time_zone='UTC', reference_datetime=REFERENCE)
 
-    assert len(_tasks(week, date(2026, 8, 24))) == len(active_trials)
-    assert len(_tasks(week, date(2026, 8, 26))) == 1
-    assert len(_tasks(week, date(2026, 8, 29))) == len(active_trials)
-    assert len(_tasks(week, date(2026, 8, 30))) == 1
+    assert len(_tasks(week, date(2026, 8, 17))) == len(active_trials)
+    assert len(_tasks(week, date(2026, 8, 19))) == 1
+    assert len(_tasks(week, date(2026, 8, 22))) == len(active_trials)
+    assert len(_tasks(week, date(2026, 8, 23))) == 1
     assert all('Bed 2' not in task.text for day in week.days for task in day.tasks)
 
 
@@ -183,7 +181,7 @@ def test_tuesday_age_rules_include_exact_boundary_and_exclude_after_it(
     age,
     expected_rule,
 ):
-    tuesday = date(2026, 8, 25)
+    tuesday = date(2026, 8, 18)
     _create_trial(start_date=tuesday - timedelta(days=age), start_method=method)
 
     week = generate_weekly_tasks(time_zone='UTC', reference_datetime=REFERENCE)
@@ -204,7 +202,7 @@ def test_care_notes_rule_requires_nonblank_notes_and_prompts_use_both_names():
     _create_trial(plant_name='Mint', container_name='Green Pot', care_notes='')
 
     week = generate_weekly_tasks(time_zone='UTC', reference_datetime=REFERENCE)
-    thursday_tasks = _tasks(week, date(2026, 8, 27))
+    thursday_tasks = _tasks(week, date(2026, 8, 20))
 
     assert len(thursday_tasks) == 1
     assert thursday_tasks[0].text == (
@@ -244,57 +242,57 @@ def test_keys_and_all_fixed_prompts_are_exact():
         (day.date, [(task.key, task.text) for task in day.tasks]) for day in week.days
     ] == [
         (
-            date(2026, 8, 24),
+            date(2026, 8, 17),
             [
                 (
-                    f'weekly-task:v1:2026-08-24:soil-moisture:{trial.id}',
+                    f'weekly-task:v1:2026-08-17:soil-moisture:{trial.id}',
                     'Check soil moisture for Basil in Patio Pot. Water only if the '
                     'top inch feels dry.',
                 )
             ],
         ),
         (
-            date(2026, 8, 25),
+            date(2026, 8, 18),
             [
                 (
-                    f'weekly-task:v1:2026-08-25:seed-sprouts:{trial.id}',
+                    f'weekly-task:v1:2026-08-18:seed-sprouts:{trial.id}',
                     'Look for sprouts from Basil in Patio Pot and note what you see.',
                 )
             ],
         ),
         (
-            date(2026, 8, 26),
+            date(2026, 8, 19),
             [
                 (
-                    'weekly-task:v1:2026-08-26:garden-health',
+                    'weekly-task:v1:2026-08-19:garden-health',
                     'Check active Growing Trials for pests or other problems.',
                 )
             ],
         ),
         (
-            date(2026, 8, 27),
+            date(2026, 8, 20),
             [
                 (
-                    f'weekly-task:v1:2026-08-27:care-notes:{trial.id}',
+                    f'weekly-task:v1:2026-08-20:care-notes:{trial.id}',
                     'Review the care notes for Basil in Patio Pot before deciding '
                     'whether it needs anything.',
                 )
             ],
         ),
         (
-            date(2026, 8, 29),
+            date(2026, 8, 22),
             [
                 (
-                    f'weekly-task:v1:2026-08-29:growth-observation:{trial.id}',
+                    f'weekly-task:v1:2026-08-22:growth-observation:{trial.id}',
                     'Add a growth observation for Basil in Patio Pot.',
                 )
             ],
         ),
         (
-            date(2026, 8, 30),
+            date(2026, 8, 23),
             [
                 (
-                    'weekly-task:v1:2026-08-30:weekly-review',
+                    'weekly-task:v1:2026-08-23:weekly-review',
                     'Review the changes you noticed across active Growing Trials '
                     'this week.',
                 )

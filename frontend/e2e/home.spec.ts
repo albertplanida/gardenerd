@@ -22,23 +22,23 @@ type WeeklyTaskWeek = {
 const plant = { id: "1", name: "Radish" };
 const container = { id: "2", name: "Pot 1" };
 const populatedWeek: WeeklyTaskWeek = {
-  startDate: "2026-08-24",
-  endDate: "2026-08-30",
+  startDate: "2026-08-17",
+  endDate: "2026-08-23",
   days: [
     {
-      date: "2026-08-24",
+      date: "2026-08-17",
       tasks: [
         {
-          key: "2026-08-24:moisture:1",
+          key: "2026-08-17:moisture:1",
           text: "Check soil moisture for Radish in Pot 1. Water only if the top inch feels dry.",
         },
       ],
     },
     {
-      date: "2026-08-26",
+      date: "2026-08-19",
       tasks: [
         {
-          key: "2026-08-26:pests",
+          key: "2026-08-19:pests",
           text: "Check active Growing Trials for pests or other problems.",
         },
       ],
@@ -107,8 +107,8 @@ async function mockDashboardGraphql(
           json: {
             data: {
               weeklyTasks: options.weeklyTasks ?? {
-                startDate: "2026-08-24",
-                endDate: "2026-08-30",
+                startDate: "2026-08-17",
+                endDate: "2026-08-23",
                 days: [],
               },
             },
@@ -212,10 +212,10 @@ test("shows a populated weekly plan without mobile overflow", async ({
   });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Next week" })).toBeVisible();
-  await expect(page.getByText("Aug 24, 2026 - Aug 30, 2026")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  await expect(page.getByText("Aug 17, 2026 - Aug 23, 2026")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Monday, August 24" }),
+    page.getByRole("heading", { name: "Monday, August 17" }),
   ).toBeVisible();
   await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
   await expect(page.getByRole("heading", { name: /Tuesday/ })).toHaveCount(0);
@@ -233,7 +233,7 @@ test("empty weekly plan navigates to Growing Trials", async ({ page }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: "No tasks planned for next week" }),
+    page.getByRole("heading", { name: "No tasks planned for this week" }),
   ).toBeVisible();
   await page.getByRole("link", { name: "View Growing Trials" }).click();
   await expect(page).toHaveURL(/\/growing-trials$/);
@@ -253,7 +253,7 @@ test("retries a failed weekly request", async ({ page }) => {
   expect(requests.weeklyRequestCount()).toBe(1);
   await page.getByRole("button", { name: "Try again" }).last().click();
   await expect(
-    page.getByRole("heading", { name: "Monday, August 24" }),
+    page.getByRole("heading", { name: "Monday, August 17" }),
   ).toBeVisible();
   expect(requests.weeklyRequestCount()).toBe(2);
 });

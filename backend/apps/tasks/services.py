@@ -46,7 +46,7 @@ def generate_weekly_tasks(
         raise ValueError('reference_datetime must be timezone-aware')
 
     local_date = reference_datetime.astimezone(browser_time_zone).date()
-    start_date = local_date + timedelta(days=7 - local_date.weekday())
+    start_date = local_date - timedelta(days=local_date.weekday())
     end_date = start_date + timedelta(days=6)
     scheduled_dates = {
         'monday': start_date,

@@ -12,23 +12,23 @@ jest.mock("./useWeeklyTasks", () => ({ useWeeklyTasks: jest.fn() }));
 
 const retry = jest.fn();
 const week = {
-  startDate: "2026-08-24",
-  endDate: "2026-08-30",
+  startDate: "2026-08-17",
+  endDate: "2026-08-23",
   days: [
     {
-      date: "2026-08-26",
+      date: "2026-08-19",
       tasks: [
         {
-          key: "2026-08-26:pests",
+          key: "2026-08-19:pests",
           text: "Check active Growing Trials for pests or other problems.",
         },
       ],
     },
     {
-      date: "2026-08-24",
+      date: "2026-08-17",
       tasks: [
         {
-          key: "2026-08-24:moisture:1",
+          key: "2026-08-17:moisture:1",
           text: "Check soil moisture for Radish in Patio Pot.",
         },
       ],
@@ -57,9 +57,9 @@ describe("WeeklyTaskList", () => {
     });
     renderList();
 
-    expect(screen.getByRole("heading", { name: "Next week" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "This week" })).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Loading next week's tasks...",
+      "Loading this week's tasks...",
     );
   });
 
@@ -71,19 +71,19 @@ describe("WeeklyTaskList", () => {
     });
     renderList();
 
-    expect(screen.getByText("Aug 24, 2026 - Aug 30, 2026")).toBeVisible();
+    expect(screen.getByText("Aug 17, 2026 - Aug 23, 2026")).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: "Monday, August 24" }),
+      screen.getByRole("heading", { name: "Monday, August 17" }),
     ).toBeVisible();
     expect(
-      screen.getByRole("heading", { name: "Wednesday, August 26" }),
+      screen.getByRole("heading", { name: "Wednesday, August 19" }),
     ).toBeVisible();
-    expect(screen.queryByText(/Tuesday, August 25/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tuesday, August 18/)).not.toBeInTheDocument();
     expect(
       screen
         .getAllByRole("heading", { level: 3 })
         .map((heading) => heading.textContent),
-    ).toEqual(["Monday, August 24", "Wednesday, August 26"]);
+    ).toEqual(["Monday, August 17", "Wednesday, August 19"]);
     const lists = screen.getAllByRole("list");
     expect(within(lists[0]).getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getByText(/Radish in Patio Pot/)).toBeVisible();
@@ -102,7 +102,7 @@ describe("WeeklyTaskList", () => {
     renderList();
 
     expect(
-      screen.getByRole("heading", { name: "No tasks planned for next week" }),
+      screen.getByRole("heading", { name: "No tasks planned for this week" }),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "View Growing Trials" }),
