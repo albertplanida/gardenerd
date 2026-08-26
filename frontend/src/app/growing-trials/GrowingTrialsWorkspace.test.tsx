@@ -2,12 +2,16 @@ import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import {
+  abandonGrowingTrial,
+  completeGrowingTrial,
   getGrowingTrialSetupContext,
   listGrowingTrialContainerOptions,
   listGrowingTrialPlantOptions,
   listGrowingTrials,
+  startGrowingTrial,
 } from "@/graphql/growingTrials";
 
+import { WeeklyTaskList } from "../WeeklyTaskList";
 import { GrowingTrialsWorkspace } from "./GrowingTrialsWorkspace";
 
 const mockPush = jest.fn();
@@ -17,6 +21,9 @@ jest.mock("next/navigation", () => ({
 }));
 jest.mock("@mantine/notifications", () => ({
   notifications: { show: jest.fn(), hide: jest.fn() },
+}));
+jest.mock("../WeeklyTaskList", () => ({
+  WeeklyTaskList: jest.fn(() => <h2>This week</h2>),
 }));
 jest.mock("@/graphql/growingTrials", () => ({
   abandonGrowingTrial: jest.fn(),
@@ -48,6 +55,16 @@ const activeTrial = {
   createdAt: "2026-08-14T12:00:00Z",
   updatedAt: "2026-08-14T12:00:00Z",
 };
+const plannedTrial = {
+  ...activeTrial,
+  status: "PLANNED" as const,
+  startDate: null,
+  startMethod: null,
+};
+
+function latestWeeklyTaskRevision() {
+  return jest.mocked(WeeklyTaskList).mock.calls.at(-1)?.[0].refreshRevision;
+}
 
 function renderDashboard(statusFilter: "ACTIVE" | "PLANNED" | null = "ACTIVE") {
   return render(
@@ -60,6 +77,7 @@ function renderDashboard(statusFilter: "ACTIVE" | "PLANNED" | null = "ACTIVE") {
 describe("GrowingTrialsWorkspace dashboard", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    jest.mocked(WeeklyTaskList).mockImplementation(() => <h2>This week</h2>);
     jest.mocked(listGrowingTrials).mockResolvedValue(emptyPage);
     jest.mocked(getGrowingTrialSetupContext).mockResolvedValue({
       hasPlants: true,
@@ -87,6 +105,21 @@ describe("GrowingTrialsWorkspace dashboard", () => {
       "aria-pressed",
       "true",
     );
+  });
+
+  it("renders the weekly plan before Growing Trial management", async () => {
+    renderDashboard();
+
+    await screen.findByRole("heading", { name: "No Active Growing Trials" });
+    const weeklyHeading = screen.getByRole("heading", { name: "This week" });
+    const trialsHeading = screen.getByRole("heading", {
+      name: "Growing Trials",
+      level: 2,
+    });
+    expect(
+      weeklyHeading.compareDocumentPosition(trialsHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it.each([
@@ -173,4 +206,71 @@ describe("GrowingTrialsWorkspace dashboard", () => {
     await screen.findByRole("heading", { name: "No Active Growing Trials" });
     expect(getGrowingTrialSetupContext).toHaveBeenCalledTimes(2);
   });
+
+  it("refreshes weekly tasks after a successful start", async () => {
+    const started = {
+      ...plannedTrial,
+      status: "ACTIVE" as const,
+      startDate: "2026-08-20",
+      startMethod: "SEED" as const,
+    };
+    jest
+      .mocked(listGrowingTrials)
+      .mockResolvedValue({ ...emptyPage, items: [plannedTrial] });
+    jest.mocked(startGrowingTrial).mockResolvedValue(started);
+    renderDashboard("PLANNED");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start Radish in Pot 1" }),
+    );
+    fireEvent.change(screen.getByLabelText("Start date"), {
+      target: { value: "2026-08-20" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Start method" }));
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Seed", hidden: true }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Growing Trial" }),
+    );
+
+    await waitFor(() => expect(latestWeeklyTaskRevision()).toBe(1));
+  });
+
+  it.each([
+    [
+      "Complete Radish in Pot 1",
+      "Complete Growing Trial",
+      completeGrowingTrial,
+      "COMPLETED",
+    ],
+    [
+      "Abandon Radish in Pot 1",
+      "Abandon Growing Trial",
+      abandonGrowingTrial,
+      "ABANDONED",
+    ],
+  ] as const)(
+    "refreshes weekly tasks after %s succeeds",
+    async (openButton, submitButton, operation, status) => {
+      const updated = {
+        ...activeTrial,
+        status,
+        endDate: "2026-08-20",
+      };
+      jest
+        .mocked(listGrowingTrials)
+        .mockResolvedValue({ ...emptyPage, items: [activeTrial] });
+      jest.mocked(operation).mockResolvedValue(updated);
+      renderDashboard();
+      fireEvent.click(await screen.findByRole("button", { name: openButton }));
+      fireEvent.change(screen.getByLabelText("End date"), {
+        target: { value: "2026-08-20" },
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: submitButton }));
+
+      await waitFor(() => expect(latestWeeklyTaskRevision()).toBe(1));
+    },
+  );
 });

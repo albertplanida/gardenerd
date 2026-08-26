@@ -8,10 +8,17 @@ from apps.journal.graphql.JournalEvent.mutations import JournalEventMutations
 from apps.journal.graphql.JournalEvent.queries import JournalEventQueries
 from apps.plants.graphql.Plant.mutations import PlantMutations
 from apps.plants.graphql.Plant.queries import PlantQueries
+from apps.tasks.graphql.WeeklyTask.queries import WeeklyTaskQueries
 
 
 @strawberry.type
-class Query(ContainerQueries, GrowingTrialQueries, JournalEventQueries, PlantQueries):
+class Query(
+    ContainerQueries,
+    GrowingTrialQueries,
+    JournalEventQueries,
+    PlantQueries,
+    WeeklyTaskQueries,
+):
     @strawberry.field
     def health(self) -> str:
         return 'ok'

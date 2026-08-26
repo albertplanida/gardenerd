@@ -44,6 +44,7 @@ import { StartGrowingTrialModal } from "./StartGrowingTrialModal";
 import { useGrowingTrialOptions } from "./useGrowingTrialOptions";
 import { useGrowingTrials } from "./useGrowingTrials";
 import { useGrowingTrialSetupContext } from "./useGrowingTrialSetupContext";
+import { WeeklyTaskList } from "../WeeklyTaskList";
 
 const refreshNotificationId = "growing-trial-refresh-failed";
 const startErrorMessages: Partial<Record<GraphqlErrorCode, string>> = {
@@ -128,6 +129,7 @@ export function GrowingTrialsWorkspace({
   const [visibleStatusFilter, setVisibleStatusFilter] =
     useOptimistic(statusFilter);
   const trials = useGrowingTrials(visibleStatusFilter);
+  const [weeklyTasksRevision, setWeeklyTasksRevision] = useState(0);
   const [modalOpened, setModalOpened] = useState(false);
   const [modalSession, setModalSession] = useState(0);
   const options = useGrowingTrialOptions(modalOpened);
@@ -352,6 +354,7 @@ export function GrowingTrialsWorkspace({
         startMethod,
         Intl.DateTimeFormat().resolvedOptions().timeZone,
       );
+      setWeeklyTasksRevision((current) => current + 1);
       startFocusTarget.current = updated.id;
       void trials.acceptUpdated(updated).then((outcome) => {
         if (outcome === "failed") showRefreshWarning();
@@ -430,6 +433,9 @@ export function GrowingTrialsWorkspace({
                 resultSummary || null,
                 timeZone,
               );
+      if (endMode !== "edit") {
+        setWeeklyTasksRevision((current) => current + 1);
+      }
       void trials.acceptUpdated(updated).then((outcome) => {
         if (outcome === "failed") showRefreshWarning();
       });
@@ -490,6 +496,10 @@ export function GrowingTrialsWorkspace({
             Add Growing Trial
           </Button>
         </Group>
+
+        {variant === "dashboard" ? (
+          <WeeklyTaskList refreshRevision={weeklyTasksRevision} />
+        ) : null}
 
         {variant === "dashboard" ? (
           <Stack gap="sm">

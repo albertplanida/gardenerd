@@ -13,9 +13,38 @@ type Trial = {
   createdAt: string;
   updatedAt: string;
 };
+type WeeklyTaskWeek = {
+  startDate: string;
+  endDate: string;
+  days: { date: string; tasks: { key: string; text: string }[] }[];
+};
 
 const plant = { id: "1", name: "Radish" };
 const container = { id: "2", name: "Pot 1" };
+const populatedWeek: WeeklyTaskWeek = {
+  startDate: "2026-08-17",
+  endDate: "2026-08-23",
+  days: [
+    {
+      date: "2026-08-17",
+      tasks: [
+        {
+          key: "weekly-task:v1:2026-08-17:soil-moisture:1",
+          text: "Check soil moisture for Radish in Pot 1. Water only if the top inch feels dry.",
+        },
+      ],
+    },
+    {
+      date: "2026-08-19",
+      tasks: [
+        {
+          key: "weekly-task:v1:2026-08-19:garden-health",
+          text: "Check active Growing Trials for pests or other problems.",
+        },
+      ],
+    },
+  ],
+};
 
 function trial(id: string, status: Status): Trial {
   const started = status !== "PLANNED";
@@ -40,12 +69,17 @@ async function mockDashboardGraphql(
     initialTrials?: Trial[];
     plants?: (typeof plant)[];
     containers?: (typeof container)[];
+    weeklyTasks?: WeeklyTaskWeek;
+    weeklyFailures?: number;
   } = {},
 ) {
   const trials = [...(options.initialTrials ?? [])];
   const plants = options.plants ?? [plant];
   const containers = options.containers ?? [container];
   const listStatuses: (Status | null)[] = [];
+  const weeklyTimeZones: string[] = [];
+  let weeklyFailures = options.weeklyFailures ?? 0;
+  let weeklyRequests = 0;
 
   await page.route(/\/graphql\/?(\?.*)?$/, async (route) => {
     const body = route.request().postDataJSON() as {
@@ -57,6 +91,36 @@ async function mockDashboardGraphql(
       body.operationName ??
       body.query?.match(/\b(?:query|mutation)\s+(\w+)/)?.[1];
     const variables = body.variables ?? {};
+
+    if (operation === "WeeklyTasks") {
+      weeklyRequests += 1;
+      weeklyTimeZones.push(String(variables.timeZone));
+      if (weeklyFailures > 0) {
+        weeklyFailures -= 1;
+        await route.fulfill({
+          contentType: "application/json",
+          json: { errors: [{ message: "Weekly tasks are unavailable." }] },
+        });
+      } else {
+        await route.fulfill({
+          contentType: "application/json",
+          json: {
+            data: {
+              weeklyTasks:
+                options.weeklyTasks ??
+                (trials.some((item) => item.status === "ACTIVE")
+                  ? populatedWeek
+                  : {
+                      startDate: "2026-08-17",
+                      endDate: "2026-08-23",
+                      days: [],
+                    }),
+            },
+          },
+        });
+      }
+      return;
+    }
 
     if (operation === "GrowingTrials") {
       const status = (variables.status as Status | null) ?? null;
@@ -129,6 +193,23 @@ async function mockDashboardGraphql(
       return;
     }
 
+    if (operation === "StartGrowingTrial") {
+      const index = trials.findIndex((item) => item.id === variables.id);
+      const started: Trial = {
+        ...trials[index],
+        status: "ACTIVE",
+        startDate: String(variables.startDate),
+        startMethod: variables.startMethod as Trial["startMethod"],
+        updatedAt: "2026-08-20T12:00:00Z",
+      };
+      trials[index] = started;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { startGrowingTrial: started } },
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -136,8 +217,108 @@ async function mockDashboardGraphql(
     });
   });
 
-  return { listStatuses };
+  return {
+    listStatuses,
+    weeklyTimeZones,
+    weeklyRequestCount: () => weeklyRequests,
+  };
 }
+
+test("shows a populated weekly plan without mobile overflow", async ({
+  page,
+}) => {
+  await mockDashboardGraphql(page, {
+    initialTrials: [trial("1", "ACTIVE")],
+    weeklyTasks: populatedWeek,
+  });
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "This week" })).toBeVisible();
+  await expect(page.getByText("Aug 17, 2026 - Aug 23, 2026")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Monday, August 17" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Tuesday/ })).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+});
+
+test("empty weekly plan leaves one clear garden action", async ({ page }) => {
+  await mockDashboardGraphql(page, { initialTrials: [] });
+  await page.goto("/");
+
+  await expect(page.getByText(/No tasks are planned/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Plan your first Growing Trial" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View Growing Trials" }),
+  ).toHaveCount(0);
+});
+
+test("starting a planned trial refreshes weekly tasks without reload", async ({
+  page,
+}) => {
+  const requests = await mockDashboardGraphql(page, {
+    initialTrials: [trial("1", "PLANNED")],
+  });
+  await page.goto("/?status=planned");
+  await expect(page.getByText(/No tasks are planned/)).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(1);
+
+  await page.getByRole("button", { name: "Start Radish in Pot 1" }).click();
+  await page.getByRole("combobox", { name: "Start method" }).click();
+  await page.getByRole("option", { name: "Seed", exact: true }).click();
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+
+  await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(2);
+});
+
+test("retries a failed weekly request", async ({ page }) => {
+  const requests = await mockDashboardGraphql(page, {
+    initialTrials: [trial("1", "ACTIVE")],
+    weeklyTasks: populatedWeek,
+    weeklyFailures: 1,
+  });
+  await page.goto("/");
+
+  await expect(
+    page.getByText("Weekly tasks could not be loaded."),
+  ).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(1);
+  await page.getByRole("button", { name: "Try again" }).last().click();
+  await expect(
+    page.getByRole("heading", { name: "Monday, August 17" }),
+  ).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(2);
+});
+
+test("sends browser timezone once and ignores Growing Trial filters", async ({
+  page,
+}) => {
+  const requests = await mockDashboardGraphql(page, {
+    initialTrials: [trial("1", "ACTIVE"), trial("2", "PLANNED")],
+    weeklyTasks: populatedWeek,
+  });
+  await page.goto("/");
+  await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
+  const browserTimeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+
+  await page.getByRole("button", { name: "Planned" }).click();
+  await expect(page).toHaveURL(/\?status=planned$/);
+  await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
+  expect(requests.weeklyTimeZones).toEqual([browserTimeZone]);
+  expect(requests.weeklyRequestCount()).toBe(1);
+});
 
 test("defaults to Active and navigates URL-backed filters", async ({
   page,

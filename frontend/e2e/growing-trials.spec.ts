@@ -146,6 +146,22 @@ async function mockGrowingTrialGraphql(
     const operationName = getOperationName(body);
     const variables = body.variables ?? {};
 
+    if (operationName === "WeeklyTasks") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            weeklyTasks: {
+              startDate: "2026-08-24",
+              endDate: "2026-08-30",
+              days: [],
+            },
+          },
+        },
+      });
+      return;
+    }
+
     if (operationName === "GrowingTrialSetupContext") {
       await route.fulfill({
         contentType: "application/json",
