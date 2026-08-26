@@ -29,7 +29,7 @@ const populatedWeek: WeeklyTaskWeek = {
       date: "2026-08-17",
       tasks: [
         {
-          key: "2026-08-17:moisture:1",
+          key: "weekly-task:v1:2026-08-17:soil-moisture:1",
           text: "Check soil moisture for Radish in Pot 1. Water only if the top inch feels dry.",
         },
       ],
@@ -38,7 +38,7 @@ const populatedWeek: WeeklyTaskWeek = {
       date: "2026-08-19",
       tasks: [
         {
-          key: "2026-08-19:pests",
+          key: "weekly-task:v1:2026-08-19:garden-health",
           text: "Check active Growing Trials for pests or other problems.",
         },
       ],
@@ -106,11 +106,15 @@ async function mockDashboardGraphql(
           contentType: "application/json",
           json: {
             data: {
-              weeklyTasks: options.weeklyTasks ?? {
-                startDate: "2026-08-17",
-                endDate: "2026-08-23",
-                days: [],
-              },
+              weeklyTasks:
+                options.weeklyTasks ??
+                (trials.some((item) => item.status === "ACTIVE")
+                  ? populatedWeek
+                  : {
+                      startDate: "2026-08-17",
+                      endDate: "2026-08-23",
+                      days: [],
+                    }),
             },
           },
         });
@@ -189,6 +193,23 @@ async function mockDashboardGraphql(
       return;
     }
 
+    if (operation === "StartGrowingTrial") {
+      const index = trials.findIndex((item) => item.id === variables.id);
+      const started: Trial = {
+        ...trials[index],
+        status: "ACTIVE",
+        startDate: String(variables.startDate),
+        startMethod: variables.startMethod as Trial["startMethod"],
+        updatedAt: "2026-08-20T12:00:00Z",
+      };
+      trials[index] = started;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { startGrowingTrial: started } },
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -228,15 +249,36 @@ test("shows a populated weekly plan without mobile overflow", async ({
   ).toBeLessThanOrEqual(1);
 });
 
-test("empty weekly plan navigates to Growing Trials", async ({ page }) => {
+test("empty weekly plan leaves one clear garden action", async ({ page }) => {
   await mockDashboardGraphql(page, { initialTrials: [] });
   await page.goto("/");
 
+  await expect(page.getByText(/No tasks are planned/)).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "No tasks planned for this week" }),
+    page.getByRole("heading", { name: "Plan your first Growing Trial" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "View Growing Trials" }).click();
-  await expect(page).toHaveURL(/\/growing-trials$/);
+  await expect(
+    page.getByRole("link", { name: "View Growing Trials" }),
+  ).toHaveCount(0);
+});
+
+test("starting a planned trial refreshes weekly tasks without reload", async ({
+  page,
+}) => {
+  const requests = await mockDashboardGraphql(page, {
+    initialTrials: [trial("1", "PLANNED")],
+  });
+  await page.goto("/?status=planned");
+  await expect(page.getByText(/No tasks are planned/)).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(1);
+
+  await page.getByRole("button", { name: "Start Radish in Pot 1" }).click();
+  await page.getByRole("combobox", { name: "Start method" }).click();
+  await page.getByRole("option", { name: "Seed", exact: true }).click();
+  await page.getByRole("button", { name: "Start Growing Trial" }).click();
+
+  await expect(page.getByText(/Radish in Pot 1\. Water only/)).toBeVisible();
+  expect(requests.weeklyRequestCount()).toBe(2);
 });
 
 test("retries a failed weekly request", async ({ page }) => {

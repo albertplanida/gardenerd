@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { getWeeklyTasks, type WeeklyTaskWeek } from "@/graphql/weeklyTasks";
 
@@ -9,14 +9,13 @@ type WeeklyTasksState =
   | { status: "ready"; week: WeeklyTaskWeek }
   | { status: "error"; week: null };
 
-export function useWeeklyTasks() {
+export function useWeeklyTasks(refreshRevision = 0) {
   const browserTimeZone = useBrowserTimeZone();
   const [state, setState] = useState<WeeklyTasksState>({
     status: "loading",
     week: null,
   });
-  const [retryNonce, setRetryNonce] = useState(0);
-  const requestSequence = useRef(0);
+  const [manualRefreshRevision, setManualRefreshRevision] = useState(0);
 
   useEffect(() => {
     if (browserTimeZone.error) {
@@ -24,16 +23,19 @@ export function useWeeklyTasks() {
     }
 
     const controller = new AbortController();
-    const sequence = ++requestSequence.current;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setState({ status: "loading", week: null });
+    });
     void getWeeklyTasks(browserTimeZone.timeZone, controller.signal).then(
       (week) => {
-        if (sequence === requestSequence.current) {
+        if (!cancelled) {
           setState({ status: "ready", week });
         }
       },
       (error: unknown) => {
         if (
-          sequence === requestSequence.current &&
+          !cancelled &&
           !(error instanceof DOMException && error.name === "AbortError")
         ) {
           setState({ status: "error", week: null });
@@ -42,25 +44,25 @@ export function useWeeklyTasks() {
     );
 
     return () => {
+      cancelled = true;
       controller.abort();
-      requestSequence.current += 1;
     };
-  }, [browserTimeZone.error, browserTimeZone.timeZone, retryNonce]);
+  }, [
+    browserTimeZone.error,
+    browserTimeZone.timeZone,
+    manualRefreshRevision,
+    refreshRevision,
+  ]);
 
-  function retry() {
-    if (browserTimeZone.error) {
-      setState({ status: "loading", week: null });
-      browserTimeZone.retry();
-      setRetryNonce((current) => current + 1);
-      return;
-    }
-
-    // The timezone value stays stable, so use a request nonce only for retries.
+  function refresh() {
     setState({ status: "loading", week: null });
-    setRetryNonce((current) => current + 1);
+    if (browserTimeZone.error) {
+      browserTimeZone.retry();
+    }
+    setManualRefreshRevision((current) => current + 1);
   }
 
   return browserTimeZone.error
-    ? ({ status: "error", week: null, retry } as const)
-    : { ...state, retry };
+    ? ({ status: "error", week: null, refresh } as const)
+    : { ...state, refresh };
 }

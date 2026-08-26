@@ -48,8 +48,12 @@ export function formatWeeklyTaskRange(start: string, end: string) {
   return `${formatter.format(dateOnly(start))} - ${formatter.format(dateOnly(end))}`;
 }
 
-export function WeeklyTaskList() {
-  const tasks = useWeeklyTasks();
+type WeeklyTaskListProps = {
+  refreshRevision?: number;
+};
+
+export function WeeklyTaskList({ refreshRevision = 0 }: WeeklyTaskListProps) {
+  const tasks = useWeeklyTasks(refreshRevision);
   const days =
     tasks.status === "ready"
       ? [...tasks.week.days].sort((left, right) =>
@@ -82,7 +86,7 @@ export function WeeklyTaskList() {
               <Text>
                 Check your connection and browser timezone, then try again.
               </Text>
-              <Button mih={44} onClick={tasks.retry} variant="light">
+              <Button mih={44} onClick={tasks.refresh} variant="light">
                 Try again
               </Button>
             </Stack>
@@ -95,22 +99,10 @@ export function WeeklyTaskList() {
               {formatWeeklyTaskRange(tasks.week.startDate, tasks.week.endDate)}
             </Text>
             {days.length === 0 ? (
-              <Card withBorder radius="md">
-                <Stack align="flex-start" gap="sm">
-                  <Title order={3}>No tasks planned for this week</Title>
-                  <Text c="dimmed">
-                    Weekly tasks appear when you have an active Growing Trial.
-                  </Text>
-                  <Button
-                    component="a"
-                    href="/growing-trials"
-                    mih={44}
-                    variant="light"
-                  >
-                    View Growing Trials
-                  </Button>
-                </Stack>
-              </Card>
+              <Text c="dimmed">
+                No tasks are planned. Weekly tasks appear when you have an
+                active Growing Trial.
+              </Text>
             ) : (
               <Stack gap="sm">
                 {days.map((day) => (

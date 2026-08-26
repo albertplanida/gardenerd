@@ -71,7 +71,7 @@ describe("useWeeklyTasks", () => {
 
     rerender();
     expect(getWeeklyTasks).toHaveBeenCalledTimes(1);
-    act(() => result.current.retry());
+    act(() => result.current.refresh());
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(getWeeklyTasks).toHaveBeenCalledTimes(2);
   });
@@ -95,11 +95,71 @@ describe("useWeeklyTasks", () => {
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(getWeeklyTasks).not.toHaveBeenCalled();
 
-    act(() => result.current.retry());
+    act(() => result.current.refresh());
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(getWeeklyTasks).toHaveBeenCalledWith(
       "America/Los_Angeles",
       expect.any(AbortSignal),
     );
+  });
+
+  it("refetches once when the lifecycle refresh revision changes", async () => {
+    jest.mocked(getWeeklyTasks).mockResolvedValue(emptyWeek);
+    const { rerender } = renderHook(
+      ({ revision }) => useWeeklyTasks(revision),
+      { initialProps: { revision: 0 } },
+    );
+    await waitFor(() => expect(getWeeklyTasks).toHaveBeenCalledTimes(1));
+
+    rerender({ revision: 1 });
+
+    await waitFor(() => expect(getWeeklyTasks).toHaveBeenCalledTimes(2));
+  });
+
+  it("prevents a superseded request from overwriting newer results", async () => {
+    let resolveFirst!: (value: typeof emptyWeek) => void;
+    const firstRequest = new Promise<typeof emptyWeek>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const refreshedWeek = {
+      ...emptyWeek,
+      days: [
+        {
+          date: "2026-08-19",
+          tasks: [
+            {
+              key: "weekly-task:v1:2026-08-19:garden-health",
+              text: "Check active Growing Trials for pests or other problems.",
+            },
+          ],
+        },
+      ],
+    };
+    jest
+      .mocked(getWeeklyTasks)
+      .mockReturnValueOnce(firstRequest)
+      .mockResolvedValueOnce(refreshedWeek);
+    const { result, rerender } = renderHook(
+      ({ revision }) => useWeeklyTasks(revision),
+      { initialProps: { revision: 0 } },
+    );
+    await waitFor(() => expect(getWeeklyTasks).toHaveBeenCalledTimes(1));
+
+    rerender({ revision: 1 });
+    await waitFor(() => expect(result.current.week).toEqual(refreshedWeek));
+    act(() => resolveFirst(emptyWeek));
+
+    await waitFor(() => expect(result.current.week).toEqual(refreshedWeek));
+  });
+
+  it("aborts the request when unmounted", async () => {
+    jest.mocked(getWeeklyTasks).mockReturnValue(new Promise(() => undefined));
+    const { unmount } = renderHook(() => useWeeklyTasks());
+    await waitFor(() => expect(getWeeklyTasks).toHaveBeenCalledTimes(1));
+    const signal = jest.mocked(getWeeklyTasks).mock.calls[0][1];
+
+    unmount();
+
+    expect(signal.aborted).toBe(true);
   });
 });

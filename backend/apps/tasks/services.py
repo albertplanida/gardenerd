@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.db.models.functions import Lower
 from django.utils import timezone
@@ -10,6 +9,7 @@ from apps.growing_trials.models import (
     GrowingTrialStatus,
 )
 from apps.tasks.types import WeeklyTask, WeeklyTaskDay, WeeklyTaskWeek
+from apps.time_zones import InvalidBrowserTimeZone, parse_browser_time_zone
 
 INVALID_TIME_ZONE = 'INVALID_TIME_ZONE'
 INVALID_TIME_ZONE_MESSAGE = 'Browser time zone is invalid; refresh and try again.'
@@ -28,14 +28,18 @@ def _task(scheduled_date, rule_kind, text, trial_id=None):
     return WeeklyTask(key=key, text=text)
 
 
+def _trial_has_started(trial: GrowingTrial, scheduled_date) -> bool:
+    return trial.start_date <= scheduled_date
+
+
 def generate_weekly_tasks(
     *,
     time_zone: str,
     reference_datetime: datetime | None = None,
 ) -> WeeklyTaskWeek:
     try:
-        browser_time_zone = ZoneInfo(time_zone)
-    except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+        browser_time_zone = parse_browser_time_zone(time_zone)
+    except InvalidBrowserTimeZone as exc:
         raise WeeklyTaskGenerationError(
             INVALID_TIME_ZONE,
             INVALID_TIME_ZONE_MESSAGE,
@@ -68,40 +72,48 @@ def generate_weekly_tasks(
     tasks_by_date = {scheduled_date: [] for scheduled_date in scheduled_dates.values()}
     for trial in trials:
         subject = f'{trial.plant.name} in {trial.container.name}'
-        tasks_by_date[scheduled_dates['monday']].append(
-            _task(
-                scheduled_dates['monday'],
-                'soil-moisture',
-                f'Check soil moisture for {subject}. '
-                'Water only if the top inch feels dry.',
-                trial.id,
-            )
-        )
-
-        elapsed_days = (scheduled_dates['tuesday'] - trial.start_date).days
-        if trial.start_method == GrowingTrialStartMethod.SEED and elapsed_days <= 21:
-            tasks_by_date[scheduled_dates['tuesday']].append(
+        if _trial_has_started(trial, scheduled_dates['monday']):
+            tasks_by_date[scheduled_dates['monday']].append(
                 _task(
-                    scheduled_dates['tuesday'],
-                    'seed-sprouts',
-                    f'Look for sprouts from {subject} and note what you see.',
+                    scheduled_dates['monday'],
+                    'soil-moisture',
+                    f'Check soil moisture for {subject}. '
+                    'Water only if the top inch feels dry.',
                     trial.id,
                 )
             )
+
+        if _trial_has_started(trial, scheduled_dates['tuesday']):
+            elapsed_days = (scheduled_dates['tuesday'] - trial.start_date).days
+            if (
+                trial.start_method == GrowingTrialStartMethod.SEED
+                and elapsed_days <= 21
+            ):
+                tasks_by_date[scheduled_dates['tuesday']].append(
+                    _task(
+                        scheduled_dates['tuesday'],
+                        'seed-sprouts',
+                        f'Look for sprouts from {subject} and note what you see.',
+                        trial.id,
+                    )
+                )
+            if (
+                trial.start_method == GrowingTrialStartMethod.SEEDLING_TRANSPLANT
+                and elapsed_days <= 14
+            ):
+                tasks_by_date[scheduled_dates['tuesday']].append(
+                    _task(
+                        scheduled_dates['tuesday'],
+                        'transplant-adjustment',
+                        f'Check how {subject} is adjusting after transplanting.',
+                        trial.id,
+                    )
+                )
+
         if (
-            trial.start_method == GrowingTrialStartMethod.SEEDLING_TRANSPLANT
-            and elapsed_days <= 14
+            _trial_has_started(trial, scheduled_dates['thursday'])
+            and trial.plant.care_notes.strip()
         ):
-            tasks_by_date[scheduled_dates['tuesday']].append(
-                _task(
-                    scheduled_dates['tuesday'],
-                    'transplant-adjustment',
-                    f'Check how {subject} is adjusting after transplanting.',
-                    trial.id,
-                )
-            )
-
-        if trial.plant.care_notes.strip():
             tasks_by_date[scheduled_dates['thursday']].append(
                 _task(
                     scheduled_dates['thursday'],
@@ -112,29 +124,33 @@ def generate_weekly_tasks(
                 )
             )
 
-        tasks_by_date[scheduled_dates['saturday']].append(
+        if _trial_has_started(trial, scheduled_dates['saturday']):
+            tasks_by_date[scheduled_dates['saturday']].append(
+                _task(
+                    scheduled_dates['saturday'],
+                    'growth-observation',
+                    f'Add a growth observation for {subject}.',
+                    trial.id,
+                )
+            )
+
+    if any(_trial_has_started(trial, scheduled_dates['wednesday']) for trial in trials):
+        tasks_by_date[scheduled_dates['wednesday']].append(
             _task(
-                scheduled_dates['saturday'],
-                'growth-observation',
-                f'Add a growth observation for {subject}.',
-                trial.id,
+                scheduled_dates['wednesday'],
+                'garden-health',
+                'Check active Growing Trials for pests or other problems.',
             )
         )
-
-    tasks_by_date[scheduled_dates['wednesday']].append(
-        _task(
-            scheduled_dates['wednesday'],
-            'garden-health',
-            'Check active Growing Trials for pests or other problems.',
+    if any(_trial_has_started(trial, scheduled_dates['sunday']) for trial in trials):
+        tasks_by_date[scheduled_dates['sunday']].append(
+            _task(
+                scheduled_dates['sunday'],
+                'weekly-review',
+                'Review the changes you noticed across active Growing Trials '
+                'this week.',
+            )
         )
-    )
-    tasks_by_date[scheduled_dates['sunday']].append(
-        _task(
-            scheduled_dates['sunday'],
-            'weekly-review',
-            'Review the changes you noticed across active Growing Trials this week.',
-        )
-    )
 
     days = tuple(
         WeeklyTaskDay(date=scheduled_date, tasks=tuple(tasks_by_date[scheduled_date]))

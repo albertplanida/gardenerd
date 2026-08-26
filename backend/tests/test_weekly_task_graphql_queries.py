@@ -128,8 +128,9 @@ def test_weekly_tasks_requires_time_zone(client):
 
 
 @pytest.mark.django_db
-def test_weekly_tasks_returns_safe_invalid_time_zone_error(client):
-    body = _post(client, {'timeZone': 'Not/A_Time_Zone'}).json()
+@pytest.mark.parametrize('time_zone', ['', '   ', 'Not/A_Time_Zone', 'x' * 256])
+def test_weekly_tasks_returns_safe_invalid_time_zone_error(client, time_zone):
+    body = _post(client, {'timeZone': time_zone}).json()
 
     assert body['data'] is None
     assert body['errors'][0]['message'] == (

@@ -10,7 +10,7 @@ import {
 
 jest.mock("./useWeeklyTasks", () => ({ useWeeklyTasks: jest.fn() }));
 
-const retry = jest.fn();
+const refresh = jest.fn();
 const week = {
   startDate: "2026-08-17",
   endDate: "2026-08-23",
@@ -19,7 +19,7 @@ const week = {
       date: "2026-08-19",
       tasks: [
         {
-          key: "2026-08-19:pests",
+          key: "weekly-task:v1:2026-08-19:garden-health",
           text: "Check active Growing Trials for pests or other problems.",
         },
       ],
@@ -28,7 +28,7 @@ const week = {
       date: "2026-08-17",
       tasks: [
         {
-          key: "2026-08-17:moisture:1",
+          key: "weekly-task:v1:2026-08-17:soil-moisture:1",
           text: "Check soil moisture for Radish in Patio Pot.",
         },
       ],
@@ -53,7 +53,7 @@ describe("WeeklyTaskList", () => {
     jest.mocked(useWeeklyTasks).mockReturnValue({
       status: "loading",
       week: null,
-      retry,
+      refresh,
     });
     renderList();
 
@@ -67,7 +67,7 @@ describe("WeeklyTaskList", () => {
     jest.mocked(useWeeklyTasks).mockReturnValue({
       status: "ready",
       week,
-      retry,
+      refresh,
     });
     renderList();
 
@@ -93,27 +93,23 @@ describe("WeeklyTaskList", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("links the empty state to Growing Trials", () => {
+  it("renders a concise empty state without a competing action", () => {
     jest.mocked(useWeeklyTasks).mockReturnValue({
       status: "ready",
       week: { ...week, days: [] },
-      retry,
+      refresh,
     });
     renderList();
 
-    expect(
-      screen.getByRole("heading", { name: "No tasks planned for this week" }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("link", { name: "View Growing Trials" }),
-    ).toHaveAttribute("href", "/growing-trials");
+    expect(screen.getByText(/No tasks are planned/)).toBeVisible();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
   it("shows one retry action for request and timezone failures", () => {
     jest.mocked(useWeeklyTasks).mockReturnValue({
       status: "error",
       week: null,
-      retry,
+      refresh,
     });
     renderList();
 
@@ -121,7 +117,23 @@ describe("WeeklyTaskList", () => {
       "Weekly tasks could not be loaded.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(retry).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes lifecycle refresh revisions to the request hook", () => {
+    jest.mocked(useWeeklyTasks).mockReturnValue({
+      status: "ready",
+      week,
+      refresh,
+    });
+
+    render(
+      <MantineProvider>
+        <WeeklyTaskList refreshRevision={3} />
+      </MantineProvider>,
+    );
+
+    expect(useWeeklyTasks).toHaveBeenCalledWith(3);
   });
 });
 

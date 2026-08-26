@@ -1,5 +1,5 @@
 from datetime import date
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -11,6 +11,7 @@ from apps.journal.models import (
     JournalEvent,
     JournalEventEventType,
 )
+from apps.time_zones import InvalidBrowserTimeZone, parse_browser_time_zone
 
 GROWING_TRIAL_NOT_FOUND = 'GROWING_TRIAL_NOT_FOUND'
 GROWING_TRIAL_NOT_ACTIVE = 'GROWING_TRIAL_NOT_ACTIVE'
@@ -33,8 +34,8 @@ def _error(code: str, message: str) -> JournalEventError:
 
 def _browser_time_zone(time_zone: str) -> ZoneInfo:
     try:
-        return ZoneInfo(time_zone)
-    except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
+        return parse_browser_time_zone(time_zone)
+    except InvalidBrowserTimeZone as exc:
         raise _error(
             INVALID_TIME_ZONE,
             'Browser time zone is invalid; refresh and try again.',
