@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const backendUrl = process.env.BACKEND_ENDPOINT ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  typescript: { tsconfigPath: "tsconfig.build.json" },
   allowedDevOrigins: ["127.0.0.1"],
   skipTrailingSlashRedirect: true,
   async rewrites() {
