@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   Alert,
   Button,
-  Divider,
   Group,
   Loader,
   Stack,
   Text,
+  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 
@@ -41,6 +41,7 @@ import { useJournalPhotoUploads } from "./useJournalPhotoUploads";
 type JournalEventTimelineProps = {
   trial: GrowingTrial;
   onRefreshTrials: () => Promise<unknown>;
+  defaultExpanded?: boolean;
 };
 
 type PendingMutation =
@@ -65,9 +66,10 @@ const genericError =
 export function JournalEventTimeline({
   trial,
   onRefreshTrials,
+  defaultExpanded = false,
 }: JournalEventTimelineProps) {
   const timeline = useJournalEvents(trial.id);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [formEvent, setFormEvent] = useState<JournalEvent | null>(null);
   const [formOpened, setFormOpened] = useState(false);
   const [formSession, setFormSession] = useState(0);
@@ -88,6 +90,12 @@ export function JournalEventTimeline({
     onRefresh: () => timeline.firstPage("refresh"),
     onLifecycleConflict: handleLifecycleConflict,
   });
+  const loadInitial = useEffectEvent(() => {
+    void loadFirstPage();
+  });
+  useEffect(() => {
+    if (defaultExpanded) loadInitial();
+  }, [defaultExpanded]);
 
   useEffect(() => {
     mounted.current = true;
@@ -297,21 +305,27 @@ export function JournalEventTimeline({
   }
 
   return (
-    <Stack gap="sm" mt="xs">
-      <Divider />
-      <Button
-        aria-controls={regionId}
-        aria-expanded={expanded}
-        mih={44}
-        onClick={() => {
-          const opening = !expanded;
-          setExpanded(opening);
-          if (opening && timeline.status === "idle") void loadFirstPage();
-        }}
-        variant="subtle"
-      >
-        {expanded ? "Hide Journal" : "Show Journal"}
-      </Button>
+    <Stack gap="sm" mt="xs" className="journal-timeline">
+      {defaultExpanded ? (
+        <Group justify="space-between">
+          <Title order={2}>The growing story</Title>
+          <span className="eyebrow">Newest first</span>
+        </Group>
+      ) : (
+        <Button
+          aria-controls={regionId}
+          aria-expanded={expanded}
+          mih={44}
+          onClick={() => {
+            const opening = !expanded;
+            setExpanded(opening);
+            if (opening && timeline.status === "idle") void loadFirstPage();
+          }}
+          variant="subtle"
+        >
+          {expanded ? "Hide Journal" : "Show Journal"}
+        </Button>
+      )}
       {expanded ? (
         <Stack
           aria-label="Journal timeline"
@@ -324,9 +338,10 @@ export function JournalEventTimeline({
               disabled={timeline.status !== "ready"}
               mih={44}
               onClick={(event) => openForm(null, event.currentTarget)}
-              variant="light"
+              variant="filled"
+              className="add-journal-button"
             >
-              Add Journal Event
+              + Add Journal Event
             </Button>
           ) : null}
           {timeline.status === "loading" ? (
@@ -368,9 +383,9 @@ export function JournalEventTimeline({
               maxJournalPhotos - event.photos.length - pendingPhotos.length,
             );
             return (
-              <Stack gap="xs" key={event.id}>
+              <Stack gap="md" key={event.id} className="journal-event">
                 <Group justify="space-between" align="flex-start" wrap="wrap">
-                  <Text fw={600}>
+                  <Text fw={700} size="lg">
                     {journalEventTypeLabels[event.eventType]}
                   </Text>
                   <Text c="dimmed" size="sm">
@@ -405,17 +420,14 @@ export function JournalEventTimeline({
                     disabled={remaining === 0}
                     onSelect={(files) => photoUploads.enqueue(event.id, files)}
                     remaining={remaining}
-                  />
-                ) : null}
-                {active ? (
-                  <Group grow wrap="wrap">
+                  >
                     <Button
                       aria-label={`Edit ${journalEventTypeLabels[event.eventType]} Journal Event from ${event.eventDate}`}
                       mih={44}
                       onClick={(clickEvent) =>
                         openForm(event, clickEvent.currentTarget)
                       }
-                      variant="default"
+                      variant="subtle"
                     >
                       Edit
                     </Button>
@@ -427,13 +439,12 @@ export function JournalEventTimeline({
                         focusTarget.current = clickEvent.currentTarget;
                         setDeleteEvent(event);
                       }}
-                      variant="light"
+                      variant="subtle"
                     >
                       Delete
                     </Button>
-                  </Group>
+                  </AddJournalPhotos>
                 ) : null}
-                <Divider />
               </Stack>
             );
           })}
@@ -475,7 +486,7 @@ export function JournalEventTimeline({
               onClick={() => void timeline.loadMore()}
               variant="default"
             >
-              Load more Journal Events
+              View earlier entries
             </Button>
           ) : null}
         </Stack>

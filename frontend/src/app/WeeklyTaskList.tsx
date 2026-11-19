@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Alert,
   Button,
@@ -54,23 +55,41 @@ type WeeklyTaskListProps = {
 
 export function WeeklyTaskList({ refreshRevision = 0 }: WeeklyTaskListProps) {
   const tasks = useWeeklyTasks(refreshRevision);
+  const [weekExpanded, setWeekExpanded] = useState(false);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   const days =
     tasks.status === "ready"
       ? [...tasks.week.days].sort((left, right) =>
           left.date.localeCompare(right.date),
         )
       : [];
+  const currentDay = days.find((day) => day.date >= today) ?? days[0];
 
   return (
-    <section aria-labelledby="weekly-tasks-heading">
+    <section
+      className={`weekly-panel ${weekExpanded ? "week-expanded" : ""}`}
+      aria-labelledby="weekly-tasks-heading"
+    >
       <Stack gap="sm">
         <div>
           <Title id="weekly-tasks-heading" order={2}>
             This week
           </Title>
-          <Text c="dimmed" mt={4}>
+          <Text c="dimmed" mt={4} size="sm">
             A read-only plan based on your active Growing Trials.
           </Text>
+          <Button
+            className="week-toggle"
+            variant="subtle"
+            onClick={() => setWeekExpanded(!weekExpanded)}
+            aria-expanded={weekExpanded}
+          >
+            {weekExpanded ? "Close week" : "View week"} &gt;
+          </Button>
         </div>
 
         {tasks.status === "loading" ? (
@@ -95,32 +114,50 @@ export function WeeklyTaskList({ refreshRevision = 0 }: WeeklyTaskListProps) {
 
         {tasks.status === "ready" ? (
           <>
-            <Text c="dimmed">
+            <Text c="dimmed" className="week-range" size="xs">
               {formatWeeklyTaskRange(tasks.week.startDate, tasks.week.endDate)}
             </Text>
+            {currentDay && (
+              <div className="mobile-week-highlight">
+                <Text size="xs" c="dimmed">
+                  <time dateTime={currentDay.date}>
+                    {formatWeeklyTaskDate(currentDay.date)}
+                  </time>
+                </Text>
+                <ul>
+                  {currentDay.tasks.map((task) => (
+                    <li key={task.key}>
+                      <Text size="sm">{task.text}</Text>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {days.length === 0 ? (
               <Text c="dimmed">
                 No tasks are planned. Weekly tasks appear when you have an
                 active Growing Trial.
               </Text>
             ) : (
-              <Stack gap="sm">
+              <Stack gap="sm" className="weekly-days">
                 {days.map((day) => (
                   <Card
                     component="section"
                     key={day.date}
                     withBorder
                     radius="md"
+                    className={`weekly-day ${day.date === today ? "is-today" : ""}`}
                   >
                     <Title order={3}>
                       <time dateTime={day.date}>
                         {formatWeeklyTaskDate(day.date)}
+                        {day.date === today ? " / Today" : ""}
                       </time>
                     </Title>
                     <ul>
                       {day.tasks.map((task) => (
                         <li key={task.key}>
-                          <Text>{task.text}</Text>
+                          <Text size="sm">{task.text}</Text>
                         </li>
                       ))}
                     </ul>

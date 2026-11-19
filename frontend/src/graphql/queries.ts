@@ -101,6 +101,7 @@ export const GROWING_TRIAL_FIELDS = gql`
     plant {
       id
       name
+      careNotes
     }
     container {
       id

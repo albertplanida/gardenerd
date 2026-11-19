@@ -21,6 +21,7 @@ export type GrowingTrial = {
   plant: {
     id: string;
     name: string;
+    careNotes?: string;
   };
   container: {
     id: string;

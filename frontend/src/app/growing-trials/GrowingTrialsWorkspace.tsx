@@ -14,6 +14,7 @@ import {
   Container,
   Group,
   Loader,
+  Select,
   Stack,
   Text,
   Title,
@@ -21,7 +22,8 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useRouter } from "next/navigation";
 
-import { AppNavigation } from "@/components/AppNavigation";
+import { PageBreadcrumb } from "@/components/AppNavigation";
+import { BotanicalIllustration } from "@/components/Botanical";
 import { graphqlErrorCode, type GraphqlErrorCode } from "@/graphql/errors";
 import {
   abandonGrowingTrial,
@@ -126,9 +128,15 @@ export function GrowingTrialsWorkspace({
   statusFilter,
 }: GrowingTrialsWorkspaceProps) {
   const router = useRouter();
+  const [requestedTrialId, setSelectedTrialId] = useState<string | null>(null);
   const [visibleStatusFilter, setVisibleStatusFilter] =
     useOptimistic(statusFilter);
   const trials = useGrowingTrials(visibleStatusFilter);
+  const selectedTrialId = trials.items.some(
+    (trial) => trial.id === requestedTrialId,
+  )
+    ? requestedTrialId
+    : null;
   const [weeklyTasksRevision, setWeeklyTasksRevision] = useState(0);
   const [modalOpened, setModalOpened] = useState(false);
   const [modalSession, setModalSession] = useState(0);
@@ -246,7 +254,11 @@ export function GrowingTrialsWorkspace({
   function selectFilter(status: GrowingTrialStatus | null, href: string) {
     startTransition(() => {
       setVisibleStatusFilter(status);
-      router.push(href);
+      router.push(
+        variant === "dashboard"
+          ? href
+          : `/growing-trials${status ? `?status=${status.toLowerCase()}` : ""}`,
+      );
     });
   }
 
@@ -477,74 +489,168 @@ export function GrowingTrialsWorkspace({
   }
 
   return (
-    <Container py="xl">
+    <Container fluid className={`workspace ${variant}`}>
       <Stack gap="lg">
-        <AppNavigation />
-
-        <Group justify="space-between" align="flex-start" wrap="wrap">
-          <div>
-            <Title>
-              {variant === "dashboard" ? "Gardenerd" : "Growing Trials"}
-            </Title>
-            <Text c="dimmed" mt="xs">
-              {variant === "dashboard"
-                ? "See what you are growing now and move each attempt forward."
-                : "Plan one Plant in one Container and track each growing attempt."}
-            </Text>
-          </div>
-          <Button ref={addButton} mih={44} onClick={openCreateModal}>
-            Add Growing Trial
-          </Button>
-        </Group>
-
-        {variant === "dashboard" ? (
-          <WeeklyTaskList refreshRevision={weeklyTasksRevision} />
-        ) : null}
-
-        {variant === "dashboard" ? (
-          <Stack gap="sm">
-            <Title order={2}>Growing Trials</Title>
-            <Group gap="xs" wrap="wrap">
-              {filters.map((filter) => {
-                const selected = filter.status === visibleStatusFilter;
-                return (
-                  <Button
-                    aria-pressed={selected}
-                    key={filter.label}
-                    mih={44}
-                    onClick={() => selectFilter(filter.status, filter.href)}
-                    ref={selected ? selectedFilterButton : undefined}
-                    variant={selected ? "filled" : "default"}
-                  >
-                    {filter.label}
-                  </Button>
-                );
-              })}
-            </Group>
-          </Stack>
-        ) : null}
-
-        <GrowingTrialList
-          emptyContent={
-            variant === "dashboard" ? dashboardEmptyContent() : undefined
+        <PageBreadcrumb
+          label={
+            trials.items.find((trial) => trial.id === selectedTrialId)?.plant
+              .name ??
+            (variant === "dashboard" ? "Dashboard" : "Growing Trials")
           }
-          trials={trials.items}
-          status={trials.status}
-          hasNextPage={trials.hasNextPage}
-          hasPreviousPage={trials.hasPreviousPage}
-          onNext={() => void trials.next()}
-          onPrevious={() => void trials.previous()}
-          onRetry={() => void trials.retry()}
-          onStart={(trial) => {
-            setStartError(null);
-            setStartModalSession((current) => current + 1);
-            setStartTrial(trial);
-          }}
-          onComplete={(trial) => openEndModal(trial, "complete")}
-          onAbandon={(trial) => openEndModal(trial, "abandon")}
-          onEditResult={(trial) => openEndModal(trial, "edit")}
-          onRefreshTrials={trials.retryRefresh}
         />
+
+        {!selectedTrialId && (
+          <Group
+            className={
+              variant === "dashboard" ? "welcome-panel" : "page-heading"
+            }
+            justify="space-between"
+            align="flex-start"
+            wrap="wrap"
+          >
+            <div>
+              {variant === "dashboard" && (
+                <span className="eyebrow">
+                  Small observations. Real growth.
+                </span>
+              )}
+              <Title>
+                {variant === "dashboard"
+                  ? "A little care, every day."
+                  : "Growing Trials"}
+              </Title>
+              <Text c="dimmed" mt="xs">
+                {variant === "dashboard"
+                  ? "Follow your Growing Trials. Notice what changes. Learn as you grow."
+                  : "One plant. One container. A new thing to learn."}
+              </Text>
+            </div>
+            <Button ref={addButton} mih={44} onClick={openCreateModal}>
+              + Add Growing Trial
+            </Button>
+            {variant === "dashboard" && <BotanicalIllustration />}
+          </Group>
+        )}
+
+        <div
+          className={
+            variant === "dashboard" && !selectedTrialId
+              ? "dashboard-layout"
+              : "trials-layout"
+          }
+        >
+          <div className="trials-column">
+            {!selectedTrialId ? (
+              <Stack gap="sm" className="trial-filters">
+                {variant === "dashboard" && (
+                  <Group justify="space-between">
+                    <Title order={2}>Your Growing Trials</Title>
+                    <Button
+                      component="a"
+                      href="/growing-trials"
+                      variant="subtle"
+                    >
+                      View all trials &gt;
+                    </Button>
+                  </Group>
+                )}
+                <Group gap="xs" wrap="wrap" aria-label="Filter Growing Trials">
+                  {(variant === "dashboard"
+                    ? filters
+                    : [filters[4], ...filters.slice(0, 4)]
+                  ).map((filter) => {
+                    const selected = filter.status === visibleStatusFilter;
+                    return (
+                      <Button
+                        aria-pressed={selected}
+                        key={filter.label}
+                        mih={44}
+                        onClick={() => selectFilter(filter.status, filter.href)}
+                        ref={selected ? selectedFilterButton : undefined}
+                        variant={selected ? "filled" : "default"}
+                      >
+                        {filter.label}
+                      </Button>
+                    );
+                  })}
+                </Group>
+                {variant === "management" && (
+                  <Select
+                    className="mobile-status-select"
+                    aria-label="Filter Growing Trials by status"
+                    allowDeselect={false}
+                    value={visibleStatusFilter ?? "ALL"}
+                    data={[
+                      { value: "ALL", label: "Status: All Growing Trials" },
+                      ...filters
+                        .filter((filter) => filter.status !== null)
+                        .map((filter) => ({
+                          value: filter.status!,
+                          label: `Status: ${filter.label}`,
+                        })),
+                    ]}
+                    onChange={(value) => {
+                      const filter = filters.find(
+                        (item) =>
+                          item.status === (value === "ALL" ? null : value),
+                      );
+                      if (filter) selectFilter(filter.status, filter.href);
+                    }}
+                  />
+                )}
+              </Stack>
+            ) : null}
+
+            <GrowingTrialList
+              variant={variant}
+              selectedId={selectedTrialId}
+              onOpen={(id) => {
+                setSelectedTrialId(id);
+                window.scrollTo({ top: 0 });
+              }}
+              onBack={() => {
+                setSelectedTrialId(null);
+                window.scrollTo({ top: 0 });
+              }}
+              emptyContent={
+                variant === "dashboard" ? dashboardEmptyContent() : undefined
+              }
+              trials={trials.items}
+              status={trials.status}
+              hasNextPage={trials.hasNextPage}
+              hasPreviousPage={trials.hasPreviousPage}
+              onNext={() => void trials.next()}
+              onPrevious={() => void trials.previous()}
+              onRetry={() => void trials.retry()}
+              onStart={(trial) => {
+                setStartError(null);
+                setStartModalSession((current) => current + 1);
+                setStartTrial(trial);
+              }}
+              onComplete={(trial) => openEndModal(trial, "complete")}
+              onAbandon={(trial) => openEndModal(trial, "abandon")}
+              onEditResult={(trial) => openEndModal(trial, "edit")}
+              onRefreshTrials={trials.retryRefresh}
+            />
+            {variant === "dashboard" && !selectedTrialId && (
+              <section className="learning-note">
+                <span className="eyebrow">
+                  Your garden is a work in progress
+                </span>
+                <Title order={2}>The useful thing is what you notice.</Title>
+                <Text>
+                  Open a trial to record a care action, an observation or a
+                  photo.
+                  <br />
+                  Small notes today become useful lessons next season.
+                </Text>
+              </section>
+            )}
+          </div>
+          {variant === "dashboard" && !selectedTrialId && (
+            <WeeklyTaskList refreshRevision={weeklyTasksRevision} />
+          )}
+        </div>
       </Stack>
 
       <GrowingTrialFormModal

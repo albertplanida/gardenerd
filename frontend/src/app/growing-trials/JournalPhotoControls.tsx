@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   Button,
@@ -125,23 +125,25 @@ export function AddJournalPhotos({
   disabled,
   remaining,
   onSelect,
+  children,
 }: {
   disabled: boolean;
   remaining: number;
   onSelect: (files: File[]) => PhotoSelectionError[];
+  children?: ReactNode;
 }) {
   const [errors, setErrors] = useState<PhotoSelectionError[]>([]);
   return (
     <Stack gap={4}>
-      <Group justify="space-between" wrap="wrap">
-        <Text c="dimmed" size="sm">
-          {remaining} photo{remaining === 1 ? "" : "s"} remaining
-        </Text>
+      <Text c="dimmed" size="sm">
+        {remaining} photo{remaining === 1 ? "" : "s"} remaining
+      </Text>
+      <Group wrap="wrap" className="journal-event-actions">
         <Button
           component="label"
           disabled={disabled || remaining === 0}
           mih={44}
-          variant="light"
+          variant="subtle"
         >
           Add photos
           <input
@@ -157,6 +159,7 @@ export function AddJournalPhotos({
             type="file"
           />
         </Button>
+        {children}
       </Group>
       {errors.length ? (
         <Alert color="red" role="alert" title="Some photos were not selected">
@@ -295,7 +298,7 @@ export function JournalPhotoGallery({
     <>
       <SimpleGrid
         aria-label="Journal Event photos"
-        cols={{ base: 2, sm: 3, md: 4 }}
+        cols={{ base: 1, sm: 2 }}
         role="list"
         spacing="xs"
       >
@@ -324,7 +327,7 @@ export function JournalPhotoGallery({
                 onError={() => handleError(photo.thumbnailUrl)}
                 radius="sm"
                 src={photo.thumbnailUrl}
-                style={{ aspectRatio: 1 }}
+                style={{ aspectRatio: "16 / 10" }}
                 w="100%"
               />
             </button>
