@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Alert, Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Stack,
+  TextInput,
+  Text,
+} from "@mantine/core";
 
 type ContainerFormModalProps = {
   opened: boolean;
@@ -48,6 +56,9 @@ export function ContainerFormModal({
       transitionProps={{ duration: 0 }}
     >
       <Stack gap="md">
+        <Text c="dimmed" size="sm">
+          Give your pot or growing space a recognizable name.
+        </Text>
         {error ? (
           <Alert color="red">Container could not be saved.</Alert>
         ) : null}

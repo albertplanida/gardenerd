@@ -7,6 +7,7 @@ import {
   Stack,
   Textarea,
   TextInput,
+  Text,
 } from "@mantine/core";
 
 type PlantFormModalProps = {
@@ -81,6 +82,9 @@ export function PlantFormModal({
       transitionProps={{ duration: 0 }}
     >
       <Stack gap="md">
+        <Text c="dimmed" size="sm">
+          Keep your care notes simple and useful.
+        </Text>
         {error ? <Alert color="red">Plant could not be saved.</Alert> : null}
         <TextInput
           error={nameError}

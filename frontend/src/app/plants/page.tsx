@@ -19,7 +19,7 @@ import {
   listPlants,
   type Plant,
 } from "@/graphql/plants";
-import { AppNavigation } from "@/components/AppNavigation";
+import { PageBreadcrumb } from "@/components/AppNavigation";
 
 import { PlantFormModal } from "./PlantFormModal";
 
@@ -140,19 +140,24 @@ export default function PlantsPage() {
   }
 
   return (
-    <Container py="xl">
+    <Container fluid className="workspace library-workspace">
       <Stack gap="lg">
-        <AppNavigation />
+        <PageBreadcrumb label="Plants" />
 
-        <Group justify="space-between" align="flex-start">
+        <Group
+          className="page-heading"
+          justify="space-between"
+          align="flex-start"
+        >
           <div>
             <Title>Plants</Title>
             <Text c="dimmed" mt="xs">
-              Keep notes for plants you may want to grow.
+              A small library of things you want to grow, and what you know
+              about them.
             </Text>
           </div>
 
-          <Button onClick={openCreateModal}>Add Plant</Button>
+          <Button onClick={openCreateModal}>+ Add Plant</Button>
         </Group>
 
         {status === "loading" ? (
@@ -185,25 +190,41 @@ export default function PlantsPage() {
         ) : null}
 
         {status === "ready" && plants.length > 0 ? (
-          <Stack gap="sm">
-            {plants.map((plant) => (
-              <Card key={plant.id} withBorder radius="md">
-                <Stack gap="xs">
-                  <Group justify="space-between">
+          <Stack gap="lg">
+            <span className="eyebrow">Your plant notes</span>
+            <div className="plant-grid">
+              {plants.map((plant, index) => (
+                <Card key={plant.id} className="plant-card" radius="md">
+                  <Stack gap="sm" h="100%">
+                    <span className="eyebrow">
+                      Plant / {String(offset + index + 1).padStart(2, "0")}
+                    </span>
                     <Title order={3}>{plant.name}</Title>
+                    <Text className="plant-care-notes" c="dimmed">
+                      {plant.careNotes ||
+                        "A fresh page. Add what you know about this plant."}
+                    </Text>
                     <Button
                       aria-label={`Edit ${plant.name}`}
                       onClick={() => openEditModal(plant)}
-                      variant="subtle"
+                      variant="light"
+                      className="edit-plant-button"
                     >
-                      Edit
+                      Edit notes
                     </Button>
-                  </Group>
-                  {plant.careNotes ? <Text>{plant.careNotes}</Text> : null}
-                </Stack>
-              </Card>
-            ))}
-            <Group justify="flex-end">
+                  </Stack>
+                </Card>
+              ))}
+              <section className="plant-library-note">
+                <Title order={2}>A living notebook.</Title>
+                <Text>Keep care notes in your own words.</Text>
+                <Text>
+                  You can use the same Plant in different Growing Trials over
+                  time.
+                </Text>
+              </section>
+            </div>
+            <Group className="pagination" justify="flex-end">
               <Button
                 disabled={!hasPreviousPage}
                 onClick={goToPreviousPage}

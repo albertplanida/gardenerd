@@ -19,7 +19,8 @@ import {
   type GardenContainer,
   listContainers,
 } from "@/graphql/containers";
-import { AppNavigation } from "@/components/AppNavigation";
+import { PageBreadcrumb } from "@/components/AppNavigation";
+import { PotIllustration } from "@/components/Botanical";
 
 import { ContainerFormModal } from "./ContainerFormModal";
 
@@ -124,19 +125,23 @@ export default function ContainersPage() {
   }
 
   return (
-    <Container py="xl">
+    <Container fluid className="workspace library-workspace">
       <Stack gap="lg">
-        <AppNavigation />
+        <PageBreadcrumb label="Containers" />
 
-        <Group justify="space-between" align="flex-start">
+        <Group
+          className="page-heading"
+          justify="space-between"
+          align="flex-start"
+        >
           <div>
             <Title>Containers</Title>
             <Text c="dimmed" mt="xs">
-              Track the pots and places where Growing Trials happen.
+              The pots and places where your Growing Trials take root.
             </Text>
           </div>
 
-          <Button onClick={openCreateModal}>Add Container</Button>
+          <Button onClick={openCreateModal}>+ Add Container</Button>
         </Group>
 
         {status === "loading" ? (
@@ -169,15 +174,18 @@ export default function ContainersPage() {
         ) : null}
 
         {status === "ready" && containers.length > 0 ? (
-          <Stack gap="sm">
+          <Stack gap="md" className="container-list">
             {containers.map((container) => (
-              <Card key={container.id} withBorder radius="md">
-                <Group justify="space-between">
+              <Card key={container.id} className="container-card" radius="md">
+                <Group wrap="nowrap">
+                  <span className="container-icon">
+                    <PotIllustration />
+                  </span>
                   <Title order={3}>{container.name}</Title>
                   <Button
                     aria-label={`Edit ${container.name}`}
                     onClick={() => openEditModal(container)}
-                    variant="subtle"
+                    variant="light"
                   >
                     Edit
                   </Button>
@@ -186,6 +194,13 @@ export default function ContainersPage() {
             ))}
           </Stack>
         ) : null}
+        <section className="container-guidance">
+          <Title order={3}>One active Growing Trial per Container.</Title>
+          <Text c="dimmed">
+            Reuse a Container when its current trial is finished. Give each one
+            a name you can recognize.
+          </Text>
+        </section>
       </Stack>
 
       {modalState ? (
