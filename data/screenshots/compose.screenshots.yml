@@ -1,0 +1,6 @@
+services:
+  postgres:
+    volumes:
+      - screenshot-postgres:/var/lib/postgresql
+volumes:
+  screenshot-postgres:
