@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import {
-  ColorSchemeScript,
-  MantineProvider,
-  mantineHtmlProps,
-} from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
+import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
+import { GardenProvider } from "@/components/GardenProvider";
+import { AppNavigation } from "@/components/AppNavigation";
 
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import "@fontsource/lato/400.css";
+import "@fontsource/lato/700.css";
+import "@fontsource/playfair-display/400.css";
+import "./garden.css";
 
 export const metadata: Metadata = {
   title: "Gardenerd",
@@ -22,13 +23,15 @@ export default function RootLayout({
   return (
     <html lang="en" {...mantineHtmlProps}>
       <head>
-        <ColorSchemeScript />
+        <ColorSchemeScript forceColorScheme="light" />
       </head>
       <body>
-        <MantineProvider>
-          <Notifications />
-          {children}
-        </MantineProvider>
+        <GardenProvider>
+          <AppNavigation />
+          <main className="garden-main" id="main-content">
+            {children}
+          </main>
+        </GardenProvider>
       </body>
     </html>
   );
